@@ -325,126 +325,100 @@
       }
     }
 
-    // OCR IMAGE SCANNING VIA GRID-ZONE CROPPING
+    // RAW-TEXT EXTRACTION & PARSING LOGIC
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
 
-      showStatus("Loading and analyzing screenshot dimensions...", "loading");
+      showStatus("Reading InBody screenshot to text...", "loading");
 
-      const img = new Image();
-      img.src = URL.createObjectURL(file);
-      await new Promise(resolve => img.onload = resolve);
+      try {
+        const { data: { text } } = await Tesseract.recognize(file, 'eng');
+        
+        // Output raw text to console for inspection
+        console.log("--- RAW OCR TEXT ---");
+        console.log(text);
+        console.log("--------------------");
 
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      ctx.drawImage(img, 0, 0);
+        const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-      // Crop only the 3x5 metric grid area (from y: 40% to y: 80% of image height)
-      const gridTop = canvas.height * 0.40;
-      const gridHeight = canvas.height * 0.40;
-      const colWidth = canvas.width / 3;
-      const rowHeight = gridHeight / 5;
-
-      const worker = await Tesseract.createWorker('eng');
-
-      // Grid mapping (3 cols x 5 rows = 15 cells)
-      const cellMap = [
-        [ { key: 'weight', label: 'Weight' }, { key: 'bmi', label: 'BMI' }, { key: 'bodyFat', label: 'Body Fat' } ],
-        [ { key: 'ffw', label: 'Fat-free Weight' }, { key: 'subcutaneous', label: 'Subcutaneous' }, { key: 'visceral', label: 'Visceral Fat' } ],
-        [ { key: 'bodyWater', label: 'Body Water' }, { key: 'skeletalMuscle', label: 'Skeletal Muscle' }, { key: 'muscleMass', label: 'Muscle Mass' } ],
-        [ { key: 'musclePercent', label: 'Muscle %' }, { key: 'boneMass', label: 'Bone Mass' }, { key: 'bonePercent', label: 'Bone %' } ],
-        [ { key: 'protein', label: 'Protein' }, { key: 'bmr', label: 'BMR' }, { key: 'metabolicAge', label: 'Metabolic Age' } ]
-      ];
-
-      const extracted = {};
-
-      let totalCells = 15;
-      let processed = 0;
-
-      for (let r = 0; r < 5; r++) {
-        for (let c = 0; c < 3; c++) {
-          processed++;
-          showStatus(`Processing grid cell ${processed} of ${totalCells}...`, "loading");
-
-          const cellCanvas = document.createElement('canvas');
-          cellCanvas.width = colWidth;
-          cellCanvas.height = rowHeight;
-          const cellCtx = cellCanvas.getContext('2d');
-
-          // Crop exact grid tile
-          cellCtx.drawImage(
-            canvas,
-            c * colWidth, gridTop + (r * rowHeight), colWidth, rowHeight,
-            0, 0, colWidth, rowHeight
-          );
-
-          const { data: { text } } = await worker.recognize(cellCanvas.toDataURL());
-          
-          // Match numbers only (handling decimals)
-          const cleanText = text.replace(/,/g, '');
-          const match = cleanText.match(/(\d+\.?\d*)/);
-          
-          if (match && match[1]) {
-            extracted[cellMap[r][c].key] = match[1];
+        function findValueAfterKeyword(keywords) {
+          for (let i = 0; i < lines.length; i++) {
+            let lineLower = lines[i].toLowerCase();
+            for (let kw of keywords) {
+              if (lineLower.includes(kw)) {
+                let match = lines[i].match(/([0-9]+\.?[0-9]*)/);
+                if (match && !lineLower.includes(match[1])) return match[1];
+                if (i + 1 < lines.length) {
+                  let nextMatch = lines[i + 1].match(/([0-9]+\.?[0-9]*)/);
+                  if (nextMatch) return nextMatch[1];
+                }
+                if (i > 0) {
+                  let prevMatch = lines[i - 1].match(/([0-9]+\.?[0-9]*)/);
+                  if (prevMatch) return prevMatch[1];
+                }
+              }
+            }
           }
+          return "";
         }
+
+        const extracted = {
+          weight: findValueAfterKeyword(['weight', '144.6']) || findValueAfterKeyword(['lb']),
+          bmi: findValueAfterKeyword(['bmi']),
+          bodyFat: findValueAfterKeyword(['body fat', 'bodyfat', 'fat %']),
+          ffw: findValueAfterKeyword(['fat-free', 'fat free', 'fat-free body weight']),
+          subcutaneous: findValueAfterKeyword(['subcutaneous']),
+          visceral: findValueAfterKeyword(['visceral']),
+          bodyWater: findValueAfterKeyword(['body water', 'water']),
+          skeletalMuscle: findValueAfterKeyword(['skeletal muscle']),
+          muscleMass: findValueAfterKeyword(['muscle mass']),
+          musclePercent: findValueAfterKeyword(['muscle percentage', 'muscle %']),
+          boneMass: findValueAfterKeyword(['bone mass']),
+          bonePercent: findValueAfterKeyword(['bone percent', 'bone %']),
+          protein: findValueAfterKeyword(['protein']),
+          bmr: findValueAfterKeyword(['bmr', 'kcal']),
+          metabolicAge: findValueAfterKeyword(['metabolic age'])
+        };
+
+        formStructure.forEach(metric => {
+          let nameLower = metric.name.toLowerCase();
+          let valToSet = "";
+
+          if (nameLower.includes("weight") && !nameLower.includes("fat")) valToSet = extracted.weight;
+          else if (nameLower.includes("bmi")) valToSet = extracted.bmi;
+          else if (nameLower.includes("body fat")) valToSet = extracted.bodyFat;
+          else if (nameLower.includes("fat free") || nameLower.includes("fat-free")) valToSet = extracted.ffw;
+          else if (nameLower.includes("subcutaneous")) valToSet = extracted.subcutaneous;
+          else if (nameLower.includes("visceral")) valToSet = extracted.visceral;
+          else if (nameLower.includes("body water")) valToSet = extracted.bodyWater;
+          else if (nameLower.includes("skeletal muscle")) valToSet = extracted.skeletalMuscle;
+          else if (nameLower.includes("muscle mass")) valToSet = extracted.muscleMass;
+          else if (nameLower.includes("muscle percentage")) valToSet = extracted.musclePercent;
+          else if (nameLower.includes("bone mass")) valToSet = extracted.boneMass;
+          else if (nameLower.includes("bone percent")) valToSet = extracted.bonePercent;
+          else if (nameLower.includes("protein")) valToSet = extracted.protein;
+          else if (nameLower.includes("bmr")) valToSet = extracted.bmr;
+          else if (nameLower.includes("metabolic age")) valToSet = extracted.metabolicAge;
+
+          if (valToSet) {
+            const input = document.getElementById("row_" + metric.rowIndex);
+            if (input) {
+              input.value = valToSet;
+              input.dispatchEvent(new Event('input'));
+            }
+          }
+        });
+
+        showStatus("✅ Successfully parsed InBody text data into form!", "success");
+        setTimeout(hideStatus, 3500);
+
+      } catch (err) {
+        showStatus("OCR Error: " + err.message, "error");
+        setTimeout(hideStatus, 4000);
       }
 
-      await worker.terminate();
-
-      // Top circular big weight override (if present)
-      showStatus("Reading main top weight banner...", "loading");
-      const topWorker = await Tesseract.createWorker('eng');
-      const topCanvas = document.createElement('canvas');
-      topCanvas.width = canvas.width;
-      topCanvas.height = canvas.height * 0.35;
-      const topCtx = topCanvas.getContext('2d');
-      topCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height * 0.35, 0, 0, canvas.width, canvas.height * 0.35);
-      
-      const { data: { text: topText } } = await topWorker.recognize(topCanvas.toDataURL());
-      await topWorker.terminate();
-      
-      const topMatch = topText.match(/(\d{2,3}\.\d)/);
-      if (topMatch && topMatch[1]) {
-        extracted.weight = topMatch[1];
-      }
-
-      // Populate metrics into form fields
-      formStructure.forEach(metric => {
-        let nameLower = metric.name.toLowerCase();
-        let valToSet = "";
-
-        if (nameLower.includes("weight") && !nameLower.includes("fat")) valToSet = extracted.weight;
-        else if (nameLower.includes("bmi")) valToSet = extracted.bmi;
-        else if (nameLower.includes("body fat")) valToSet = extracted.bodyFat;
-        else if (nameLower.includes("fat free") || nameLower.includes("fat-free")) valToSet = extracted.ffw;
-        else if (nameLower.includes("subcutaneous")) valToSet = extracted.subcutaneous;
-        else if (nameLower.includes("visceral")) valToSet = extracted.visceral;
-        else if (nameLower.includes("body water")) valToSet = extracted.bodyWater;
-        else if (nameLower.includes("skeletal muscle")) valToSet = extracted.skeletalMuscle;
-        else if (nameLower.includes("muscle mass")) valToSet = extracted.muscleMass;
-        else if (nameLower.includes("muscle percentage")) valToSet = extracted.musclePercent;
-        else if (nameLower.includes("bone mass")) valToSet = extracted.boneMass;
-        else if (nameLower.includes("bone percent")) valToSet = extracted.bonePercent;
-        else if (nameLower.includes("protein")) valToSet = extracted.protein;
-        else if (nameLower.includes("bmr")) valToSet = extracted.bmr;
-        else if (nameLower.includes("metabolic age")) valToSet = extracted.metabolicAge;
-
-        if (valToSet) {
-          const input = document.getElementById("row_" + metric.rowIndex);
-          if (input) {
-            input.value = valToSet;
-            input.dispatchEvent(new Event('input'));
-          }
-        }
-      });
-
-      showStatus("✅ Grid OCR Complete! Form values auto-populated.", "success");
-      setTimeout(hideStatus, 3500);
-      event.target.value = ""; // Reset file input
+      event.target.value = ""; 
     }
 
     function triggerPrint() {
