@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MD Expo 2026 - Health Data Form</title>
+  <title>[TEST] MD Expo 2026 - Health Data Form</title>
+  <!-- Tesseract.js for Browser OCR -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -163,6 +165,10 @@
     
     .btn-print { background-color: #27ae60; }
     .btn-print:hover { background-color: #1e8449; }
+
+    .btn-ocr { background-color: #d35400; margin-bottom: 12px; width: 100%; display: block; text-align: center; }
+    .btn-ocr:hover { background-color: #ba4a00; }
+
     button:disabled { background-color: #cbd5e0 !important; cursor: not-allowed; }
 
     /* SINGLE COLUMN SCREEN VIEW */
@@ -255,7 +261,7 @@
   <!-- PASSWORD PROTECTION OVERLAY -->
   <div id="auth-overlay">
     <div class="auth-box">
-      <h3>MD Expo 2026 Portal</h3>
+      <h3>MD Expo 2026 Portal (TEST)</h3>
       <p style="font-size: 14px; color: #666; margin-bottom: 15px;">Please enter the password to access.</p>
       <form onsubmit="event.preventDefault(); checkPassword();">
         <input type="password" id="password-input" placeholder="Password" onkeydown="if(event.key === 'Enter') { event.preventDefault(); checkPassword(); }" autofocus>
@@ -275,7 +281,7 @@
     <img src="WSK B2E Club_Banner_R2t.png" alt="Logo" class="brand-logo-img" onerror="this.style.display='none'">
   </div>
 
-  <h2 class="main-heading">MD Expo 2026 Health Data Entry Form</h2>
+  <h2 class="main-heading">MD Expo 2026 Health Data Entry Form (TEST)</h2>
 
   <!-- CONTROL PANEL -->
   <div class="header-controls no-print">
@@ -283,9 +289,13 @@
     <input type="text" id="visitor-search" class="search-input-box" placeholder="🔍 Type SN or Name to search..." oninput="filterVisitorDropdown()">
     
     <select id="visitor-select" onchange="handleVisitorChange()">
-      <option value="">-- Select or Add New Number --</option>
+      <option value="">-- Select Existing Number or Add New Number --</option>
       <option value="new">+ Add New Visitor</option>
     </select>
+
+    <!-- INBODY OCR UPLOAD BUTTON -->
+    <input type="file" id="inbody-file-input" accept="image/*" style="display:none" onchange="processInBodyImage(event)">
+    <button class="btn-action btn-ocr" onclick="document.getElementById('inbody-file-input').click()">📷 Upload InBody Screenshot (Auto-Fill)</button>
     
     <div class="button-container">
       <button class="btn-action btn-save" id="save-btn" onclick="saveData()">Save / Update Measurements</button>
@@ -301,7 +311,7 @@
   <div id="metrics-container"></div>
 
   <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbx66M9xr7kryCW1h_ibwNn2nG_9BG9DyNbEivaWjPOR6eVbgWOfaoQBevuXoIynlIwH/exec"; 
+    const API_URL = "https://script.google.com/macros/s/YOUR_TEST_WEB_APP_ID/exec"; 
     let formStructure = [];
     let allVisitors = [];
 
@@ -313,6 +323,97 @@
       } else {
         document.getElementById("auth-error").style.display = "block";
       }
+    }
+
+    // OCR IMAGE SCANNING & AUTO-FILL
+    function processInBodyImage(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      showStatus("Scanning InBody screenshot with OCR...", "loading");
+
+      Tesseract.recognize(
+        file,
+        'eng',
+        { logger: m => { if (m.status === 'recognizing text') showStatus(`Scanning InBody image... ${Math.round(m.progress * 100)}%`, "loading"); } }
+      ).then(({ data: { text } }) => {
+        parseAndFillInBodyText(text);
+      }).catch(err => {
+        showStatus("OCR Error: " + err.message, "error");
+        setTimeout(hideStatus, 4000);
+      });
+
+      event.target.value = ""; // Reset file input
+    }
+
+    function parseAndFillInBodyText(text) {
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      
+      function findValueNear(keywords) {
+        for (let i = 0; i < lines.length; i++) {
+          for (let kw of keywords) {
+            if (lines[i].toLowerCase().includes(kw.toLowerCase())) {
+              let match = lines[i].match(/(\d+\.?\d*)/);
+              if (match) return match[1];
+              if (i + 1 < lines.length) {
+                let nextMatch = lines[i+1].match(/(\d+\.?\d*)/);
+                if (nextMatch) return nextMatch[1];
+              }
+            }
+          }
+        }
+        return "";
+      }
+
+      const extracted = {
+        weight: findValueNear(["weight"]),
+        bmi: findValueNear(["bmi"]),
+        bodyFat: findValueNear(["body fat", "fat %"]),
+        ffw: findValueNear(["fat-free", "fat free"]),
+        subcutaneous: findValueNear(["subcutaneous"]),
+        visceral: findValueNear(["visceral"]),
+        bodyWater: findValueNear(["body water", "water"]),
+        skeletalMuscle: findValueNear(["skeletal muscle"]),
+        muscleMass: findValueNear(["muscle mass"]),
+        musclePercent: findValueNear(["muscle percentage"]),
+        boneMass: findValueNear(["bone mass"]),
+        bonePercent: findValueNear(["bone percent"]),
+        protein: findValueNear(["protein"]),
+        bmr: findValueNear(["bmr", "kcal"]),
+        metabolicAge: findValueNear(["metabolic age"])
+      };
+
+      formStructure.forEach(metric => {
+        let nameLower = metric.name.toLowerCase();
+        let valToSet = "";
+
+        if (nameLower.includes("weight") && !nameLower.includes("fat")) valToSet = extracted.weight;
+        else if (nameLower.includes("bmi")) valToSet = extracted.bmi;
+        else if (nameLower.includes("body fat")) valToSet = extracted.bodyFat;
+        else if (nameLower.includes("fat free") || nameLower.includes("fat-free")) valToSet = extracted.ffw;
+        else if (nameLower.includes("subcutaneous")) valToSet = extracted.subcutaneous;
+        else if (nameLower.includes("visceral")) valToSet = extracted.visceral;
+        else if (nameLower.includes("body water")) valToSet = extracted.bodyWater;
+        else if (nameLower.includes("skeletal muscle")) valToSet = extracted.skeletalMuscle;
+        else if (nameLower.includes("muscle mass")) valToSet = extracted.muscleMass;
+        else if (nameLower.includes("muscle percentage")) valToSet = extracted.musclePercent;
+        else if (nameLower.includes("bone mass")) valToSet = extracted.boneMass;
+        else if (nameLower.includes("bone percent")) valToSet = extracted.bonePercent;
+        else if (nameLower.includes("protein")) valToSet = extracted.protein;
+        else if (nameLower.includes("bmr")) valToSet = extracted.bmr;
+        else if (nameLower.includes("metabolic age")) valToSet = extracted.metabolicAge;
+
+        if (valToSet) {
+          const input = document.getElementById("row_" + metric.rowIndex);
+          if (input) {
+            input.value = valToSet;
+            input.dispatchEvent(new Event('input'));
+          }
+        }
+      });
+
+      showStatus("✅ InBody screenshot successfully scanned and auto-filled!", "success");
+      setTimeout(hideStatus, 3500);
     }
 
     function triggerPrint() {
@@ -457,7 +558,6 @@
         const newColIndex = res.data.colIndex;
         const displayLabel = `${visitorName} - ${paddedSn}`;
 
-        // Instantly update dropdown locally so user can click Drive or Print immediately
         let existingOpt = select.querySelector(`option[value="${newColIndex}"]`);
         if (existingOpt) {
           existingOpt.text = displayLabel;
@@ -471,7 +571,6 @@
         select.value = newColIndex;
         document.getElementById("visitor-search").value = "";
 
-        // Background sync
         fetchAPI({ action: "getVisitorList" }, function(listRes) {
           allVisitors = listRes.data;
           populateDropdown(allVisitors);
@@ -636,7 +735,9 @@
       const select = document.getElementById("visitor-select");
       if (select.value === "new") {
         clearForm();
+        showStatus("Generating next serial number...", "loading");
         fetchAPI({ action: "getNextAvailableSerial" }, function(res) {
+          hideStatus();
           const snInput = document.getElementById("row_2");
           if (snInput) {
             snInput.value = res.data;
@@ -689,7 +790,7 @@
           labelRow.className = "label-row";
           
           const label = document.createElement("label");
-          label.innerText = `${metric.displayIndex} - metric.name`+(metric.device?`({metric.device})` : "");
+          label.innerText = `${metric.displayIndex} - ${metric.name}` + (metric.device ? ` (${metric.device})` : "");
           
           const badge = document.createElement("span");
           badge.className = "recorded-badge";
@@ -785,4 +886,3 @@
   </script>
 </body>
 </html>
-
