@@ -325,76 +325,94 @@
       }
     }
 
-    // OCR IMAGE SCANNING & ANCHORED PARSING
-    function processInBodyImage(event) {
+    // OCR IMAGE SCANNING VIA GRID-ZONE CROPPING
+    async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
 
-      showStatus("Scanning InBody screenshot with OCR...", "loading");
+      showStatus("Loading and analyzing screenshot dimensions...", "loading");
 
-      Tesseract.recognize(
-        file,
-        'eng',
-        { logger: m => { if (m.status === 'recognizing text') showStatus(`Scanning InBody image... ${Math.round(m.progress * 100)}%`, "loading"); } }
-      ).then(({ data: { text } }) => {
-        parseAndFillInBodyText(text);
-      }).catch(err => {
-        showStatus("OCR Error: " + err.message, "error");
-        setTimeout(hideStatus, 4000);
-      });
+      const img = new Image();
+      img.src = URL.createObjectURL(file);
+      await new Promise(resolve => img.onload = resolve);
 
-      event.target.value = ""; // Reset file input
-    }
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      ctx.drawImage(img, 0, 0);
 
-    function parseAndFillInBodyText(text) {
-      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-      const fullText = lines.join(' ');
+      // Crop only the 3x5 metric grid area (from y: 40% to y: 80% of image height)
+      const gridTop = canvas.height * 0.40;
+      const gridHeight = canvas.height * 0.40;
+      const colWidth = canvas.width / 3;
+      const rowHeight = gridHeight / 5;
 
-      function extractMetric(patterns) {
-        for (let pattern of patterns) {
-          const regex = new RegExp(pattern + '[\\s:\\.\\-]*([0-9]+\\.?[0-9]*)', 'i');
-          const match = fullText.match(regex);
-          if (match && match[1]) return match[1];
-        }
-        return "";
-      }
+      const worker = await Tesseract.createWorker('eng');
 
-      function extractValueAboveLabel(labelKeywords) {
-        for (let i = 0; i < lines.length; i++) {
-          for (let kw of labelKeywords) {
-            if (lines[i].toLowerCase().includes(kw.toLowerCase())) {
-              let numMatch = lines[i].match(/([0-9]+\.?[0-9]*)/);
-              if (numMatch && !lines[i].toLowerCase().includes(kw.toLowerCase() + " " + numMatch[1])) {
-                return numMatch[1];
-              }
-              if (i > 0) {
-                let prevMatch = lines[i - 1].match(/([0-9]+\.?[0-9]*)/);
-                if (prevMatch) return prevMatch[1];
-              }
-            }
+      // Grid mapping (3 cols x 5 rows = 15 cells)
+      const cellMap = [
+        [ { key: 'weight', label: 'Weight' }, { key: 'bmi', label: 'BMI' }, { key: 'bodyFat', label: 'Body Fat' } ],
+        [ { key: 'ffw', label: 'Fat-free Weight' }, { key: 'subcutaneous', label: 'Subcutaneous' }, { key: 'visceral', label: 'Visceral Fat' } ],
+        [ { key: 'bodyWater', label: 'Body Water' }, { key: 'skeletalMuscle', label: 'Skeletal Muscle' }, { key: 'muscleMass', label: 'Muscle Mass' } ],
+        [ { key: 'musclePercent', label: 'Muscle %' }, { key: 'boneMass', label: 'Bone Mass' }, { key: 'bonePercent', label: 'Bone %' } ],
+        [ { key: 'protein', label: 'Protein' }, { key: 'bmr', label: 'BMR' }, { key: 'metabolicAge', label: 'Metabolic Age' } ]
+      ];
+
+      const extracted = {};
+
+      let totalCells = 15;
+      let processed = 0;
+
+      for (let r = 0; r < 5; r++) {
+        for (let c = 0; c < 3; c++) {
+          processed++;
+          showStatus(`Processing grid cell ${processed} of ${totalCells}...`, "loading");
+
+          const cellCanvas = document.createElement('canvas');
+          cellCanvas.width = colWidth;
+          cellCanvas.height = rowHeight;
+          const cellCtx = cellCanvas.getContext('2d');
+
+          // Crop exact grid tile
+          cellCtx.drawImage(
+            canvas,
+            c * colWidth, gridTop + (r * rowHeight), colWidth, rowHeight,
+            0, 0, colWidth, rowHeight
+          );
+
+          const { data: { text } } = await worker.recognize(cellCanvas.toDataURL());
+          
+          // Match numbers only (handling decimals)
+          const cleanText = text.replace(/,/g, '');
+          const match = cleanText.match(/(\d+\.?\d*)/);
+          
+          if (match && match[1]) {
+            extracted[cellMap[r][c].key] = match[1];
           }
         }
-        return "";
       }
 
-      const extracted = {
-        weight: extractMetric(['weight']) || extractValueAboveLabel(['weight']),
-        bmi: extractMetric(['bmi']) || extractValueAboveLabel(['bmi']),
-        bodyFat: extractMetric(['body fat', 'bodyfat', 'fat %']) || extractValueAboveLabel(['body fat', 'bodyfat']),
-        ffw: extractMetric(['fat-free', 'fat free']) || extractValueAboveLabel(['fat-free', 'fat free']),
-        subcutaneous: extractMetric(['subcutaneous']) || extractValueAboveLabel(['subcutaneous']),
-        visceral: extractMetric(['visceral']) || extractValueAboveLabel(['visceral']),
-        bodyWater: extractMetric(['body water', 'water']) || extractValueAboveLabel(['body water', 'water']),
-        skeletalMuscle: extractMetric(['skeletal muscle']) || extractValueAboveLabel(['skeletal muscle']),
-        muscleMass: extractMetric(['muscle mass']) || extractValueAboveLabel(['muscle mass']),
-        musclePercent: extractMetric(['muscle percentage']) || extractValueAboveLabel(['muscle percentage']),
-        boneMass: extractMetric(['bone mass']) || extractValueAboveLabel(['bone mass']),
-        bonePercent: extractMetric(['bone percent']) || extractValueAboveLabel(['bone percent']),
-        protein: extractMetric(['protein']) || extractValueAboveLabel(['protein']),
-        bmr: extractMetric(['bmr']) || extractValueAboveLabel(['bmr']),
-        metabolicAge: extractMetric(['metabolic age']) || extractValueAboveLabel(['metabolic age'])
-      };
+      await worker.terminate();
 
+      // Top circular big weight override (if present)
+      showStatus("Reading main top weight banner...", "loading");
+      const topWorker = await Tesseract.createWorker('eng');
+      const topCanvas = document.createElement('canvas');
+      topCanvas.width = canvas.width;
+      topCanvas.height = canvas.height * 0.35;
+      const topCtx = topCanvas.getContext('2d');
+      topCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height * 0.35, 0, 0, canvas.width, canvas.height * 0.35);
+      
+      const { data: { text: topText } } = await topWorker.recognize(topCanvas.toDataURL());
+      await topWorker.terminate();
+      
+      const topMatch = topText.match(/(\d{2,3}\.\d)/);
+      if (topMatch && topMatch[1]) {
+        extracted.weight = topMatch[1];
+      }
+
+      // Populate metrics into form fields
       formStructure.forEach(metric => {
         let nameLower = metric.name.toLowerCase();
         let valToSet = "";
@@ -424,8 +442,9 @@
         }
       });
 
-      showStatus("✅ InBody screenshot successfully scanned and auto-filled!", "success");
+      showStatus("✅ Grid OCR Complete! Form values auto-populated.", "success");
       setTimeout(hideStatus, 3500);
+      event.target.value = ""; // Reset file input
     }
 
     function triggerPrint() {
