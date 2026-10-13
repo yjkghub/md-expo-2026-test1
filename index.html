@@ -325,7 +325,7 @@
       }
     }
 
-    // OCR IMAGE SCANNING & AUTO-FILL
+    // OCR IMAGE SCANNING & ANCHORED PARSING
     function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -348,16 +348,28 @@
 
     function parseAndFillInBodyText(text) {
       const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-      
-      function findValueNear(keywords) {
+      const fullText = lines.join(' ');
+
+      function extractMetric(patterns) {
+        for (let pattern of patterns) {
+          const regex = new RegExp(pattern + '[\\s:\\.\\-]*([0-9]+\\.?[0-9]*)', 'i');
+          const match = fullText.match(regex);
+          if (match && match[1]) return match[1];
+        }
+        return "";
+      }
+
+      function extractValueAboveLabel(labelKeywords) {
         for (let i = 0; i < lines.length; i++) {
-          for (let kw of keywords) {
+          for (let kw of labelKeywords) {
             if (lines[i].toLowerCase().includes(kw.toLowerCase())) {
-              let match = lines[i].match(/(\d+\.?\d*)/);
-              if (match) return match[1];
-              if (i + 1 < lines.length) {
-                let nextMatch = lines[i+1].match(/(\d+\.?\d*)/);
-                if (nextMatch) return nextMatch[1];
+              let numMatch = lines[i].match(/([0-9]+\.?[0-9]*)/);
+              if (numMatch && !lines[i].toLowerCase().includes(kw.toLowerCase() + " " + numMatch[1])) {
+                return numMatch[1];
+              }
+              if (i > 0) {
+                let prevMatch = lines[i - 1].match(/([0-9]+\.?[0-9]*)/);
+                if (prevMatch) return prevMatch[1];
               }
             }
           }
@@ -366,21 +378,21 @@
       }
 
       const extracted = {
-        weight: findValueNear(["weight"]),
-        bmi: findValueNear(["bmi"]),
-        bodyFat: findValueNear(["body fat", "fat %"]),
-        ffw: findValueNear(["fat-free", "fat free"]),
-        subcutaneous: findValueNear(["subcutaneous"]),
-        visceral: findValueNear(["visceral"]),
-        bodyWater: findValueNear(["body water", "water"]),
-        skeletalMuscle: findValueNear(["skeletal muscle"]),
-        muscleMass: findValueNear(["muscle mass"]),
-        musclePercent: findValueNear(["muscle percentage"]),
-        boneMass: findValueNear(["bone mass"]),
-        bonePercent: findValueNear(["bone percent"]),
-        protein: findValueNear(["protein"]),
-        bmr: findValueNear(["bmr", "kcal"]),
-        metabolicAge: findValueNear(["metabolic age"])
+        weight: extractMetric(['weight']) || extractValueAboveLabel(['weight']),
+        bmi: extractMetric(['bmi']) || extractValueAboveLabel(['bmi']),
+        bodyFat: extractMetric(['body fat', 'bodyfat', 'fat %']) || extractValueAboveLabel(['body fat', 'bodyfat']),
+        ffw: extractMetric(['fat-free', 'fat free']) || extractValueAboveLabel(['fat-free', 'fat free']),
+        subcutaneous: extractMetric(['subcutaneous']) || extractValueAboveLabel(['subcutaneous']),
+        visceral: extractMetric(['visceral']) || extractValueAboveLabel(['visceral']),
+        bodyWater: extractMetric(['body water', 'water']) || extractValueAboveLabel(['body water', 'water']),
+        skeletalMuscle: extractMetric(['skeletal muscle']) || extractValueAboveLabel(['skeletal muscle']),
+        muscleMass: extractMetric(['muscle mass']) || extractValueAboveLabel(['muscle mass']),
+        musclePercent: extractMetric(['muscle percentage']) || extractValueAboveLabel(['muscle percentage']),
+        boneMass: extractMetric(['bone mass']) || extractValueAboveLabel(['bone mass']),
+        bonePercent: extractMetric(['bone percent']) || extractValueAboveLabel(['bone percent']),
+        protein: extractMetric(['protein']) || extractValueAboveLabel(['protein']),
+        bmr: extractMetric(['bmr']) || extractValueAboveLabel(['bmr']),
+        metabolicAge: extractMetric(['metabolic age']) || extractValueAboveLabel(['metabolic age'])
       };
 
       formStructure.forEach(metric => {
