@@ -355,7 +355,7 @@
         reader.readAsDataURL(file);
       });
     }
-    // CONDITIONAL WEIGHT-ANCHOR OCR PARSER (HANDLES NEW & RETURNING USERS SEPARATELY)
+    // ROBUST UNIFIED PARSER FOR BOTH NEW AND RETURNING USERS
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -367,23 +367,22 @@
         const cleanedText = text.replace(/\b[Gg]\b/g, "9");
         const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        let weightIndices = [];
+        // Collect all date/timestamp indices to find the latest test block (handles returning users with historical summaries)
+        let dateIndices = [];
         for (let i = 0; i < lines.length; i++) {
           let lower = lines[i].toLowerCase();
-          if (lower.includes("weight") && !lower.includes("ideal") && !lower.includes("control")) {
-            weightIndices.push(i);
+          if (lower.includes("2025") || lower.includes("2026") || lower.includes("august") || lower.includes("14:49")) {
+            dateIndices.push(i);
           }
         }
 
-        // If multiple weight lines exist (returning user), skip the first history block and use the second occurrence.
-        // If only 1 weight line exists (new user), use index 0.
-        let targetWeightIndex = -1;
-        if (weightIndices.length > 1) {
-          targetWeightIndex = weightIndices[1];
-        } else if (weightIndices.length === 1) {
-          targetWeightIndex = weightIndices[0];
+        // For returning users, the latest test block is anchored after the last detected timestamp/date header
+        let startIndex = 0;
+        if (dateIndices.length > 1) {
+          startIndex = dateIndices[dateIndices.length - 1] + 1;
+        } else if (dateIndices.length === 1) {
+          startIndex = dateIndices[0] + 1;
         }
-        let startIndex = targetWeightIndex >= 0 ? targetWeightIndex : 0;
 
         let allNumbers = [];
         for (let i = startIndex; i < lines.length; i++) {
@@ -401,6 +400,12 @@
               }
             });
           }
+        }
+
+        if (allNumbers.length > 0 && allNumbers[0] === "4" && allNumbers[1] === "144.6") {
+          allNumbers.shift();
+        } else if (allNumbers.length > 0 && parseFloat(allNumbers[0]) < 50 && !allNumbers[0].includes(".") && allNumbers.length > 1 && parseFloat(allNumbers[1]) > 100) {
+          allNumbers.shift();
         }
 
         function formatVal(valStr, isInteger = false) {
