@@ -474,7 +474,6 @@
           let nameLower = metric.name.toLowerCase();
           let rowIndex = parseInt(metric.rowIndex);
           
-          // Only filter out header/metadata rows below 6; allow all data rows including 21, 24, 25, etc.
           if (rowIndex < 6) return;
 
           let valToSet = "";
@@ -791,6 +790,8 @@
       showStatus("Loading system...", "loading");
       fetchAPI({ action: "getFormStructure" }, function(res) {
         formStructure = res.data;
+        // PRINT FORM STRUCTURE DIRECTLY ON SCREEN TO VERIFY ROWS
+        showStatus("=== LOADED FORM STRUCTURE ==\n" + JSON.stringify(formStructure, null, 2), "success");
         buildForm();
         loadVisitorDropdown();
       });
