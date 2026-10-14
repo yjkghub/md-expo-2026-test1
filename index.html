@@ -321,7 +321,7 @@
     let formStructure = [];
     let allVisitors = [];
 
-    // Session-based authentication persistence
+    // Session-based password memory
     window.addEventListener('DOMContentLoaded', () => {
       if (sessionStorage.getItem("expo_authenticated") === "true") {
         document.getElementById("auth-overlay").style.display = "none";
@@ -340,7 +340,7 @@
       }
     }
 
-    // CLEAN STREAM PARSER: IGNORES EVERYTHING BEFORE DATE/TIME, GRABS NAME, THEN READS VALUES STARTING WITH WEIGHT
+    // ROBUST OCR PARSER: IGNORES EVERYTHING BEFORE DATE, EXTRACTS NAME ABOVE DATE, STARTS VALUES WITH WEIGHT
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -375,21 +375,25 @@
 
         if (extractedName) {
           const nameInput = document.getElementById("row_3");
-          if (nameInput && !nameInput.value.trim()) {
+          if (nameInput) {
             nameInput.value = extractedName;
             nameInput.dispatchEvent(new Event('input'));
           }
         }
 
-        // 3. Gather all clean numeric values strictly appearing FROM the date/time line onward
+        // 3. Gather all numbers strictly AFTER the date/time line (skipping date numbers like 16, 14, 49)
         let numbers = [];
-        let startIndex = dateIndex >= 0 ? dateIndex : 0;
+        let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
+        
         for (let i = startIndex; i < lines.length; i++) {
-          let matches = lines[i].match(/(\d+\.?\d*)/g);
+          let line = lines[i];
+          if (line.toLowerCase().includes("all data collected") || line.toLowerCase().includes("medical treatment")) continue;
+          
+          let matches = line.match(/(\d+\.?\d*)/g);
           if (matches) {
             matches.forEach(m => {
               let num = parseFloat(m);
-              if (num < 1000) { // Filter out years
+              if (num < 1000) { // Filter out years like 2025
                 numbers.push(m);
               }
             });
@@ -419,7 +423,7 @@
           let nameLower = metric.name.toLowerCase();
           let rowIndex = parseInt(metric.rowIndex);
           
-          // STRICT FILTER: Only auto-fill Booth 13 metrics (Rows 6 to 20). Ignore Booth 9 completely!
+          // STRICT FILTER: Only auto-fill Booth 13 metrics (Rows 6 to 20)
           if (rowIndex < 6 || rowIndex > 20) return;
 
           let valToSet = "";
