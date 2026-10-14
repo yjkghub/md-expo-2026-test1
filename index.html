@@ -375,12 +375,12 @@
       });
     }
 
-    // SMART ADAPTIVE PARSER: AUTOMATICALLY DETECTS PREVIOUS HISTORY BLOCKS
+    // EXACT RULE PARSER: SKIPS "FROM" HISTORICAL BLOCK AND USES VALUES AFTER CURRENT DATE/TIME
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
 
-      showStatus("⏳ OCR Active: Converting to B&W & processing image...", "loading");
+      showStatus("⏳ OCR Active: Processing image...", "loading");
 
       try {
         const bwImageUrl = await convertToBlackAndWhite(file);
@@ -389,29 +389,27 @@
         const cleanedText = text.replace(/\b[Gg]\b/g, "9");
         const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        // Check if there is a history/comparison block by looking for "From" or multiple date/time markers
-        let hasHistoryBlock = false;
-        let mainStartIndex = 0;
+        let parseStartIndex = 0;
+        let foundFromBlock = false;
 
         for (let i = 0; i < lines.length; i++) {
           let lower = lines[i].toLowerCase();
-          if (lower.includes("from ") || lower.includes("since ")) {
-            hasHistoryBlock = true;
+          
+          if (lower.includes("from")) {
+            foundFromBlock = true;
+            continue;
           }
-          // The main measurement timestamp line typically contains a month and a time format (e.g. "15:34") or second date
-          if (hasHistoryBlock && (lower.includes("january") || lower.includes("february") || lower.includes("march") || lower.includes("april") || lower.includes("may") || lower.includes("june") || lower.includes("july") || lower.includes("august") || lower.includes("september") || lower.includes("october") || lower.includes("november") || lower.includes("december"))) {
-            mainStartIndex = i + 1;
+
+          // Once we pass the "From" block (or if none existed), find the current measurement date/time line without "From"
+          if ((lower.includes("january") || lower.includes("february") || lower.includes("march") || lower.includes("april") || lower.includes("may") || lower.includes("june") || lower.includes("july") || lower.includes("august") || lower.includes("september") || lower.includes("october") || lower.includes("november") || lower.includes("december")) && (lower.includes("2025") || lower.includes("2026") || lower.includes(":"))) {
+            parseStartIndex = i + 1;
             break;
           }
         }
 
         let allNumbers = [];
 
-        // If a history block was found, start collecting strictly after the main timestamp line. 
-        // If it's a first-timer (no history block), start from the beginning of the text lines.
-        let startIndexToScan = hasHistoryBlock ? mainStartIndex : 0;
-
-        for (let i = startIndexToScan; i < lines.length; i++) {
+        for (let i = parseStartIndex; i < lines.length; i++) {
           let line = lines[i];
           let lower = line.toLowerCase();
           if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements") || lower.includes("my account")) {
@@ -422,11 +420,8 @@
           if (matches) {
             matches.forEach(m => {
               let num = parseFloat(m);
-              // Exclude years, negative delta lines, and noise
               if (m !== "2025" && m !== "2026" && num < 5000) {
-                if (!line.includes("-" + m)) {
-                  allNumbers.push(m);
-                }
+                allNumbers.push(m);
               }
             });
           }
@@ -444,7 +439,7 @@
         }
 
         let metabolicAgeVal = "";
-        for (let i = 0; i < lines.length; i++) {
+        for (let i = parseStartIndex; i < lines.length; i++) {
           let lower = lines[i].toLowerCase();
           if (lower.includes("metabolic") || lower.includes("age")) {
             let nums = lines[i].match(/(\d+)/g);
