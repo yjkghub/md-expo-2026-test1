@@ -321,9 +321,18 @@
     let formStructure = [];
     let allVisitors = [];
 
+    // Check session memory on load so you don't have to re-enter the password
+    window.addEventListener('DOMContentLoaded', () => {
+      if (sessionStorage.getItem("expo_authenticated") === "true") {
+        document.getElementById("auth-overlay").style.display = "none";
+        initApp();
+      }
+    });
+
     function checkPassword() {
       const pwd = document.getElementById("password-input").value;
       if (pwd === "Expo2026") {
+        sessionStorage.setItem("expo_authenticated", "true");
         document.getElementById("auth-overlay").style.display = "none";
         initApp();
       } else {
@@ -331,7 +340,7 @@
       }
     }
 
-    // ROBUST DIRECT TOKEN STREAM PARSER FOR INBODY SCREENSHOTS
+    // ACCURATE PARSER WITH TOP-WEIGHT EXTRACTION & STRICT BOOTH 13 FILTER
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -345,15 +354,36 @@
 
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        // Collect all standalone valid numbers/decimals from the token stream in exact order
+        // 1. Dedicated precise extraction for the top weight dial (e.g., 144.6 lb)
+        let topWeight = "";
+        for (let i = 0; i < Math.min(lines.length, 15); i++) {
+          let line = lines[i];
+          let m = line.match(/(\d{2,3}\.\d)/);
+          if (m && parseFloat(m[1]) > 50 && parseFloat(m[1]) < 400) {
+            topWeight = m[1];
+            break;
+          }
+        }
+        // Fallback search for weight keyword or lb
+        if (!topWeight) {
+          for (let line of lines) {
+            if (line.toLowerCase().includes("weight") || line.toLowerCase().includes("lb")) {
+              let m = line.match(/(\d{2,3}\.\d|\d{2,3})/);
+              if (m && parseFloat(m[1]) > 50 && parseFloat(m[1]) < 400) {
+                topWeight = m[1];
+                break;
+              }
+            }
+          }
+        }
+
+        // Collect remaining clean sequence numbers
         let numbers = [];
         lines.forEach(line => {
-          // Skip header timestamps/metadata if needed, but grab matching digits
           let matches = line.match(/(\d+\.?\d*)/g);
           if (matches) {
             matches.forEach(m => {
               let num = parseFloat(m);
-              // Filter out year/dates like 2025, 14, 49
               if (num < 1000 && m !== "2025" && m !== "14" && m !== "49") {
                 numbers.push(m);
               }
@@ -361,7 +391,11 @@
           }
         });
 
-        // Fallback helper to search by keywords
+        // Ensure weight is front of numbers if found
+        if (topWeight && numbers[0] !== topWeight) {
+          numbers.unshift(topWeight);
+        }
+
         function extractValue(keywords) {
           for (let i = 0; i < lines.length; i++) {
             let lineLower = lines[i].toLowerCase();
@@ -383,9 +417,8 @@
           return "";
         }
 
-        // Direct extraction matching order of Inbody App grid layout
         const extracted = {
-          weight: numbers[0] || extractValue(['weight', 'lb']),
+          weight: topWeight || numbers[0] || extractValue(['weight']),
           bmi: numbers[1] || extractValue(['bmi']),
           bodyFat: numbers[2] ? numbers[2] + "%" : extractValue(['body fat', 'bodyfat']),
           ffw: numbers[3] ? numbers[3] + "lb" : extractValue(['fat-free', 'fat free']),
