@@ -375,7 +375,7 @@
       });
     }
 
-    // ROBUST 15-METRIC STREAM PARSER WITH DIRECT 'CAL' MATCHING
+    // ROBUST 15-METRIC STREAM PARSER WITH DIRECT TOKEN EXTRACTION AFTER 'cal'
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -443,18 +443,27 @@
           }
         }
 
-        // Direct 'cal' and full text search for Metabolic Age
+        // DIRECT TOKEN EXTRACTION FOR METABOLIC AGE AFTER 'cal'
         let metabolicAgeVal = "";
         
-        // 1. Search full text for pattern: "cal" followed by whitespace/symbols and a number
-        const calMatch = cleanedText.match(/cal\D+(\d+)/i);
-        if (calMatch && calMatch[1]) {
-          metabolicAgeVal = calMatch[1];
+        // Split the full raw text into words/tokens to find 'cal' and the token immediately following it
+        const tokens = cleanedText.replace(/\s+/g, ' ').split(' ');
+        for (let i = 0; i < tokens.length; i++) {
+          if (tokens[i].toLowerCase().includes("cal")) {
+            // Check the next token(s) for a standalone integer
+            for (let j = i + 1; j < Math.min(i + 3, tokens.length); j++) {
+              let cleanNum = tokens[j].replace(/[^0-9]/g, '');
+              if (cleanNum !== "") {
+                metabolicAgeVal = cleanNum;
+                break;
+              }
+            }
+            if (metabolicAgeVal) break;
+          }
         }
 
-        // 2. If not found, look for numbers immediately following BMR in the extracted numbers array or string stream
+        // Fallback: if not found via token search, take the 15th number or last number
         if (!metabolicAgeVal) {
-          // BMR is typically index 13. If there's a 15th number, take it.
           if (allNumbers.length >= 15) {
             metabolicAgeVal = allNumbers[14];
           } else if (allNumbers.length > 0) {
