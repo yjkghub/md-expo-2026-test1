@@ -375,7 +375,7 @@
       });
     }
 
-    // EXACT RULE PARSER: SKIPS "FROM" HISTORICAL BLOCK AND USES VALUES AFTER CURRENT DATE/TIME
+    // EXACT OCCURRENCE PARSER: TRACKS DATE/TIME MARKERS AND SKIPS "FROM" HISTORICAL BLOCK
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -389,22 +389,24 @@
         const cleanedText = text.replace(/\b[Gg]\b/g, "9");
         const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
+        const months = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+        
+        let dateTimeIndices = [];
+        lines.forEach((line, idx) => {
+          let lower = line.toLowerCase();
+          let hasMonth = months.some(m => lower.includes(m));
+          let hasTimeOrYear = lower.includes("2025") || lower.includes("2026") || lower.includes(":");
+          if (hasMonth && hasTimeOrYear) {
+            dateTimeIndices.push(idx);
+          }
+        });
+
+        // Skip anything below/in the "From" date/time occurrence and use the values after the second date/time occurrence without "From" before it.
         let parseStartIndex = 0;
-        let foundFromBlock = false;
-
-        for (let i = 0; i < lines.length; i++) {
-          let lower = lines[i].toLowerCase();
-          
-          if (lower.includes("from")) {
-            foundFromBlock = true;
-            continue;
-          }
-
-          // Once we pass the "From" block (or if none existed), find the current measurement date/time line without "From"
-          if ((lower.includes("january") || lower.includes("february") || lower.includes("march") || lower.includes("april") || lower.includes("may") || lower.includes("june") || lower.includes("july") || lower.includes("august") || lower.includes("september") || lower.includes("october") || lower.includes("november") || lower.includes("december")) && (lower.includes("2025") || lower.includes("2026") || lower.includes(":"))) {
-            parseStartIndex = i + 1;
-            break;
-          }
+        if (dateTimeIndices.length >= 2) {
+          parseStartIndex = dateTimeIndices[1] + 1;
+        } else if (dateTimeIndices.length === 1) {
+          parseStartIndex = dateTimeIndices[0] + 1;
         }
 
         let allNumbers = [];
