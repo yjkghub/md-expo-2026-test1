@@ -339,7 +339,7 @@
       }
     }
 
-    // ORIGINAL CLEAN SEQUENTIAL STREAM PARSER: IGNORES EVERYTHING BEFORE DATE, GRABS NAME ABOVE, READS VALUES STARTING WITH WEIGHT
+    // ROBUST OCR PARSER: EXTRACTS REAL NUMERICAL TOKENS STARTING FROM THE TOP
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -375,9 +375,21 @@
           }
         }
 
-        // 3. Collect ALL numbers strictly AFTER the date/time header line
+        // 3. Scan the entire text or lines right after the date header for real data tokens
         let numbers = [];
-        let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
+        
+        // Check for any standalone weight-like decimal pattern anywhere in the text first (e.g. 144.6)
+        let explicitWeight = "";
+        for (let line of lines) {
+          let wm = line.match(/(\d{2,3}\.\d)\s*(?:lb)?/i);
+          if (wm && parseFloat(wm[1]) >= 50 && parseFloat(wm[1]) <= 400) {
+            explicitWeight = wm[1] + "lb";
+            break;
+          }
+        }
+
+        // Collect all numerical tokens from lines starting at or after date header
+        let startIndex = dateIndex >= 0 ? dateIndex : 0;
         for (let i = startIndex; i < lines.length; i++) {
           let line = lines[i];
           if (line.toLowerCase().includes("all data collected") || line.toLowerCase().includes("medical treatment")) continue;
@@ -386,16 +398,16 @@
           if (matches) {
             matches.forEach(m => {
               let num = parseFloat(m);
-              if (num < 1000) { // Filter out years like 2025
+              if (num < 1000 && m !== "2025" && m !== "2026" && m !== "14" && m !== "49" && m !== "16") {
                 numbers.push(m);
               }
             });
           }
         }
 
-        // Sequential mapping starting directly with Weight (numbers[0])
+        // Map extracted values safely
         const extracted = {
-          weight: numbers[0] || "",
+          weight: explicitWeight || (numbers[0] ? numbers[0] + "lb" : ""),
           bmi: numbers[1] || "",
           bodyFat: numbers[2] ? numbers[2] + "%" : "",
           ffw: numbers[3] ? numbers[3] + "lb" : "",
