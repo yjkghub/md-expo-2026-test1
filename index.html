@@ -375,7 +375,7 @@
       });
     }
 
-    // ROBUST 15-METRIC STREAM PARSER WITH DIRECT 'CAL' EXTRACTION & BROAD FIELD MAPPING
+    // BULLETPROOF 15-METRIC PARSER WITH CLEAN "Age" / "Metabolic Age" MATCHING
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -386,11 +386,9 @@
         const bwImageUrl = await convertToBlackAndWhite(file);
         const { data: { text } } = await Tesseract.recognize(bwImageUrl, 'eng');
         
-        // Preprocess text: replace standalone 'G' or 'g' with '9'
         const cleanedText = text.replace(/\b[Gg]\b/g, "9");
         const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        // Locate date/time header line index
         let dateIndex = -1;
         for (let i = 0; i < lines.length; i++) {
           let lower = lines[i].toLowerCase();
@@ -403,7 +401,6 @@
         let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
         let allNumbers = [];
 
-        // Collect all valid numbers strictly after date/time header
         for (let i = startIndex; i < lines.length; i++) {
           let line = lines[i];
           let lower = line.toLowerCase();
@@ -422,14 +419,12 @@
           }
         }
 
-        // Drop leading single-digit OCR noise
         if (allNumbers.length > 0 && allNumbers[0] === "4" && allNumbers[1] === "144.6") {
           allNumbers.shift();
         } else if (allNumbers.length > 0 && parseFloat(allNumbers[0]) < 50 && !allNumbers[0].includes(".") && allNumbers.length > 1 && parseFloat(allNumbers[1]) > 100) {
           allNumbers.shift();
         }
 
-        // Helper to format values: limit decimals to 1 place or round to integer
         function formatVal(valStr, isInteger = false) {
           if (!valStr) return "";
           let num = parseFloat(valStr);
@@ -441,35 +436,18 @@
           }
         }
 
-        // DIRECT EXPLICIT EXTRACTION FOR METABOLIC AGE AFTER "cal"
+        // Direct explicit extraction after "cal"
         let metabolicAgeVal = "";
         for (let i = 0; i < lines.length; i++) {
-          let lineLower = lines[i].toLowerCase();
-          if (lineLower.includes("cal")) {
+          if (lines[i].toLowerCase().includes("cal")) {
             let parts = lines[i].split(/cal/i);
             if (parts.length > 1) {
-              let remainderNums = parts[1].match(/(\d+)/g);
-              if (remainderNums && remainderNums.length > 0) {
-                metabolicAgeVal = remainderNums[0];
+              let nums = parts[1].match(/(\d+)/g);
+              if (nums && nums.length > 0) {
+                metabolicAgeVal = nums[0];
                 break;
               }
             }
-            if (!metabolicAgeVal && i + 1 < lines.length) {
-              let nextNums = lines[i + 1].match(/(\d+)/g);
-              if (nextNums && nextNums.length > 0) {
-                metabolicAgeVal = nextNums[0];
-                break;
-              }
-            }
-          }
-        }
-
-        // Fallback: if not found via 'cal', take index 14 or last number
-        if (!metabolicAgeVal) {
-          if (allNumbers.length >= 15) {
-            metabolicAgeVal = allNumbers[14];
-          } else if (allNumbers.length > 0) {
-            metabolicAgeVal = allNumbers[allNumbers.length - 1];
           }
         }
 
@@ -488,11 +466,10 @@
           bonePercent: formatVal(allNumbers[11], false),
           protein: formatVal(allNumbers[12], false),
           bmr: formatVal(allNumbers[13], true),
-          metabolicAge: formatVal(metabolicAgeVal, true)
+          metabolicAge: formatVal(metabolicAgeVal || allNumbers[14], true)
         };
 
-        // DEBUG LOG TO VERIFY EXACT EXTRACTED VALUES
-        showStatus("=== OCR EXTRACTED VALUES ===\n" + JSON.stringify(extracted, null, 2), "success");
+        showStatus("=== EXTRACTED VALUES ===\n" + JSON.stringify(extracted, null, 2), "success");
 
         formStructure.forEach(metric => {
           let nameLower = metric.name.toLowerCase();
@@ -516,7 +493,7 @@
           else if (nameLower.includes("bone percent")) valToSet = extracted.bonePercent;
           else if (nameLower.includes("protein")) valToSet = extracted.protein;
           else if (nameLower.includes("bmr")) valToSet = extracted.bmr;
-          else if (nameLower.includes("metabolic") || nameLower.includes("age") || nameLower.includes("mat.")) valToSet = extracted.metabolicAge;
+          else if (nameLower.includes("metabolic") || metric.name.includes("Age")) valToSet = extracted.metabolicAge;
 
           if (valToSet !== undefined && valToSet !== "") {
             const input = document.getElementById("row_" + metric.rowIndex);
