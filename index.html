@@ -356,7 +356,7 @@
       });
     }
 
-    // SEPARATE CASE-BASED OCR PARSER (RETURNING USERS VS. NEW USERS)
+    // PREVIOUS WORKING PARSER (DATE/TIMESTAMP ANCHOR BASED)
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -367,69 +367,37 @@
         
         const cleanedText = text.replace(/\b[Gg]\b/g, "9");
         const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-
-        let dateIndices = [];
+        let dateIndex = -1;
         for (let i = 0; i < lines.length; i++) {
           let lower = lines[i].toLowerCase();
           if (lower.includes("2025") || lower.includes("2026") || lower.includes("august") || lower.includes("14:49")) {
-            dateIndices.push(i);
+            dateIndex = i;
+            break;
           }
         }
-
-        const isReturningUser = dateIndices.length > 1;
+        let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
         let allNumbers = [];
-
-        // ==========================================
-        // CASE 1: RETURNING USER PARSING BLOCK
-        // ==========================================
-        if (isReturningUser) {
-          let startIndex = dateIndices[dateIndices.length - 1] + 1;
-          for (let i = startIndex; i < lines.length; i++) {
-            let line = lines[i];
-            let lower = line.toLowerCase();
-            if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements") || lower.includes("my account")) {
-              continue;
-            }
-            let matches = line.match(/(\d+\.?\d*)/g);
-            if (matches) {
-              matches.forEach(m => {
-                let num = parseFloat(m);
-                if (m !== "2025" && m !== "2026" && num < 5000) {
-                  allNumbers.push(m);
-                }
-              });
-            }
+        for (let i = startIndex; i < lines.length; i++) {
+          let line = lines[i];
+          let lower = line.toLowerCase();
+          if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements") || lower.includes("my account")) {
+            continue;
           }
-          if (allNumbers.length > 0 && allNumbers[0] === "4" && allNumbers[1] === "144.6") {
-            allNumbers.shift();
-          } else if (allNumbers.length > 0 && parseFloat(allNumbers[0]) < 50 && !allNumbers[0].includes(".") && allNumbers.length > 1 && parseFloat(allNumbers[1]) > 100) {
-            allNumbers.shift();
-          }
-        } 
-        // ==========================================
-        // CASE 2: FIRST-TIME (NEW) USER PARSING BLOCK
-        // ==========================================
-        else {
-          let dateIndex = dateIndices.length === 1 ? dateIndices[0] : -1;
-          let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
-          for (let i = startIndex; i < lines.length; i++) {
-            let line = lines[i];
-            let lower = line.toLowerCase();
-            if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements") || lower.includes("my account")) {
-              continue;
-            }
-            let matches = line.match(/(\d+\.?\d*)/g);
-            if (matches) {
-              matches.forEach(m => {
-                let num = parseFloat(m);
-                if (m !== "2025" && m !== "2026" && num < 5000) {
-                  allNumbers.push(m);
-                }
-              });
-            }
+          let matches = line.match(/(\d+\.?\d*)/g);
+          if (matches) {
+            matches.forEach(m => {
+              let num = parseFloat(m);
+              if (m !== "2025" && m !== "2026" && num < 5000) {
+                allNumbers.push(m);
+              }
+            });
           }
         }
-
+        if (allNumbers.length > 0 && allNumbers[0] === "4" && allNumbers[1] === "144.6") {
+          allNumbers.shift();
+        } else if (allNumbers.length > 0 && parseFloat(allNumbers[0]) < 50 && !allNumbers[0].includes(".") && allNumbers.length > 1 && parseFloat(allNumbers[1]) > 100) {
+          allNumbers.shift();
+        }
         function formatVal(valStr, isInteger = false) {
           if (!valStr) return "";
           let num = parseFloat(valStr);
@@ -440,7 +408,6 @@
             return num.toFixed(1);
           }
         }
-
         let metabolicAgeVal = "";
         for (let i = 0; i < lines.length; i++) {
           if (lines[i].toLowerCase().includes("cal")) {
@@ -454,7 +421,6 @@
             }
           }
         }
-
         const extracted = {
           weight: formatVal(allNumbers[0], false),
           bmi: formatVal(allNumbers[1], false),
@@ -472,9 +438,7 @@
           bmr: formatVal(allNumbers[13], true),
           metabolicAge: formatVal(metabolicAgeVal || allNumbers[14], true)
         };
-
-        showStatus("=== EXTRACTED VALUES (" + (isReturningUser ? "Returning User" : "New User") + ") ===\n" + JSON.stringify(extracted, null, 2), "success");
-
+        showStatus("=== EXTRACTED VALUES ===\n" + JSON.stringify(extracted, null, 2), "success");
         formStructure.forEach(metric => {
           let nameLower = metric.name.toLowerCase();
           let rowIndex = parseInt(metric.rowIndex);
@@ -496,7 +460,6 @@
           else if (nameLower.includes("protein")) valToSet = extracted.protein;
           else if (nameLower.includes("bmr")) valToSet = extracted.bmr;
           else if (nameLower.includes("metabolic") || metric.name.includes("Age")) valToSet = extracted.metabolicAge;
-
           if (valToSet !== undefined && valToSet !== "") {
             const input = document.getElementById("row_" + metric.rowIndex);
             if (input) {
