@@ -375,7 +375,7 @@
       });
     }
 
-    // SINGLE WEIGHT INDEX PARSER
+    // TIMESTAMP HEADER PARSER LOGIC
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -389,18 +389,21 @@
         const cleanedText = text.replace(/\b[Gg]\b/g, "9");
         const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        let weightIndex = -1;
+        let startIndex = 0;
         for (let i = 0; i < lines.length; i++) {
-          if (lines[i].includes("Weight")) {
-            weightIndex = i;
+          let lower = lines[i].toLowerCase();
+          if (lower.includes("jan") || lower.includes("feb") || lower.includes("mar") || lower.includes("apr") || 
+              lower.includes("may") || lower.includes("jun") || lower.includes("jul") || lower.includes("aug") || 
+              lower.includes("sep") || lower.includes("oct") || lower.includes("nov") || lower.includes("dec") ||
+              ((lower.includes("2025") || lower.includes("2026")) && lower.includes(":"))) {
+            startIndex = i + 1;
             break;
           }
         }
 
-        let parseStartIndex = weightIndex !== -1 ? weightIndex + 1 : 0;
         let allNumbers = [];
 
-        for (let i = parseStartIndex; i < lines.length; i++) {
+        for (let i = startIndex; i < lines.length; i++) {
           let line = lines[i];
           let lower = line.toLowerCase();
           if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements") || lower.includes("my account")) {
@@ -432,7 +435,7 @@
         }
 
         let metabolicAgeVal = "";
-        for (let i = parseStartIndex; i < lines.length; i++) {
+        for (let i = startIndex; i < lines.length; i++) {
           let lower = lines[i].toLowerCase();
           if (lower.includes("metabolic") || lower.includes("age")) {
             let nums = lines[i].match(/(\d+)/g);
