@@ -375,7 +375,7 @@
       });
     }
 
-    // PARSER WITHOUT ARBITRARY ROW CEILING LIMITS
+    // STRICT PARSER: SKIPS TOP HISTORY BLOCK & ANCHORS TO THE MAIN MEASUREMENT GRID
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -389,40 +389,38 @@
         const cleanedText = text.replace(/\b[Gg]\b/g, "9");
         const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        let dateIndex = -1;
+        // Find the index of the main measurement block timestamp (e.g., month name followed by a time like 15:34)
+        let mainStartIndex = 0;
         for (let i = 0; i < lines.length; i++) {
           let lower = lines[i].toLowerCase();
-          if (lower.includes("2025") || lower.includes("2026") || lower.includes("august") || lower.includes("14:49")) {
-            dateIndex = i;
+          if ((lower.includes("january") || lower.includes("february") || lower.includes("march") || lower.includes("april") || lower.includes("may") || lower.includes("june") || lower.includes("july") || lower.includes("august") || lower.includes("september") || lower.includes("october") || lower.includes("november") || lower.includes("december")) && (lower.includes("2025") || lower.includes("2026") || lower.includes(":"))) {
+            mainStartIndex = i + 1;
             break;
           }
         }
 
-        let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
+        // If no explicit date line was matched, fallback to skipping lines that contain delta indicators ("From" or negative numbers)
         let allNumbers = [];
-
-        for (let i = startIndex; i < lines.length; i++) {
+        for (let i = mainStartIndex; i < lines.length; i++) {
           let line = lines[i];
           let lower = line.toLowerCase();
+          
           if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements") || lower.includes("my account")) {
             continue;
           }
 
-          let matches = line.match(/(\d+\.?\d*)/g);
+          let matches = line.match(/(-?\d+\.?\d*)/g);
           if (matches) {
             matches.forEach(m => {
               let num = parseFloat(m);
-              if (m !== "2025" && m !== "2026" && num < 5000) {
-                allNumbers.push(m);
+              // Skip years, negative comparison deltas, and noise values
+              if (m !== "2025" && m !== "2026" && num > 0 && num < 5000) {
+                if (!line.includes("-" + m)) {
+                  allNumbers.push(m);
+                }
               }
             });
           }
-        }
-
-        if (allNumbers.length > 0 && allNumbers[0] === "4" && allNumbers[1] === "144.6") {
-          allNumbers.shift();
-        } else if (allNumbers.length > 0 && parseFloat(allNumbers[0]) < 50 && !allNumbers[0].includes(".") && allNumbers.length > 1 && parseFloat(allNumbers[1]) > 100) {
-          allNumbers.shift();
         }
 
         function formatVal(valStr, isInteger = false) {
@@ -438,14 +436,12 @@
 
         let metabolicAgeVal = "";
         for (let i = 0; i < lines.length; i++) {
-          if (lines[i].toLowerCase().includes("cal")) {
-            let parts = lines[i].split(/cal/i);
-            if (parts.length > 1) {
-              let nums = parts[1].match(/(\d+)/g);
-              if (nums && nums.length > 0) {
-                metabolicAgeVal = nums[0];
-                break;
-              }
+          let lower = lines[i].toLowerCase();
+          if (lower.includes("metabolic") || lower.includes("age")) {
+            let nums = lines[i].match(/(\d+)/g);
+            if (nums && nums.length > 0) {
+              metabolicAgeVal = nums[nums.length - 1];
+              break;
             }
           }
         }
@@ -790,8 +786,6 @@
       showStatus("Loading system...", "loading");
       fetchAPI({ action: "getFormStructure" }, function(res) {
         formStructure = res.data;
-        // PRINT FORM STRUCTURE DIRECTLY ON SCREEN TO VERIFY ROWS
-        showStatus("=== LOADED FORM STRUCTURE ==\n" + JSON.stringify(formStructure, null, 2), "success");
         buildForm();
         loadVisitorDropdown();
       });
