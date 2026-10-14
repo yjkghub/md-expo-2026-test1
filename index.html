@@ -375,7 +375,7 @@
       });
     }
 
-    // ROBUST 15-METRIC SEQUENTIAL STREAM PARSER WITH G->9 CORRECTION & EXPLICIT METABOLIC AGE CAPTURE
+    // ROBUST 15-METRIC STREAM PARSER WITH EXPLICIT METABOLIC AGE MAPPING
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -443,19 +443,6 @@
           }
         }
 
-        // Explicitly extract Metabolic Age (usually the last standalone 1-3 digit integer at the very end of the numbers stream)
-        let metabolicAgeVal = "";
-        for (let i = allNumbers.length - 1; i >= 0; i--) {
-          let n = parseFloat(allNumbers[i]);
-          // Metabolic age is typically between 10 and 120 and doesn't contain a decimal point
-          if (n >= 10 && n <= 120 && !allNumbers[i].includes(".")) {
-            metabolicAgeVal = allNumbers[i];
-            // Remove it from the array so it doesn't conflict with the 14 preceding metrics
-            allNumbers.splice(i, 1);
-            break;
-          }
-        }
-
         const extracted = {
           weight: formatVal(allNumbers[0], false),
           bmi: formatVal(allNumbers[1], false),
@@ -471,7 +458,7 @@
           bonePercent: formatVal(allNumbers[11], false),
           protein: formatVal(allNumbers[12], false),
           bmr: formatVal(allNumbers[13], true),
-          metabolicAge: formatVal(metabolicAgeVal, true)
+          metabolicAge: formatVal(allNumbers[14], true)
         };
 
         formStructure.forEach(metric => {
