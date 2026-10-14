@@ -321,7 +321,6 @@
     let formStructure = [];
     let allVisitors = [];
 
-    // Session-based authentication memory check
     window.addEventListener('DOMContentLoaded', () => {
       if (sessionStorage.getItem("expo_authenticated") === "true") {
         document.getElementById("auth-overlay").style.display = "none";
@@ -340,7 +339,7 @@
       }
     }
 
-    // SMART KEYWORD-RELATIVE OCR PARSER (ROBUST AGAINST DROPPED TOP LINES)
+    // ORIGINAL CLEAN SEQUENTIAL STREAM PARSER: IGNORES EVERYTHING BEFORE DATE, GRABS NAME ABOVE, READS VALUES STARTING WITH WEIGHT
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -354,7 +353,7 @@
 
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        // 1. Locate date/time header line index
+        // 1. Locate the date/time header line index
         let dateIndex = -1;
         for (let i = 0; i < lines.length; i++) {
           let lower = lines[i].toLowerCase();
@@ -376,59 +375,47 @@
           }
         }
 
-        // 3. Smart Keyword-Based Relative Lookup Engine
-        function findValueForKeywords(keywords, hasPercent, hasLb) {
-          for (let i = 0; i < lines.length; i++) {
-            let lineLower = lines[i].toLowerCase();
-            for (let kw of keywords) {
-              if (lineLower.includes(kw)) {
-                let candidateLines = [lines[i]];
-                if (i > 0) candidateLines.push(lines[i - 1]);
-                if (i + 1 < lines.length) candidateLines.push(lines[i + 1]);
-
-                for (let cLine of candidateLines) {
-                  let matches = cLine.match(/(\d+\.?\d*)/g);
-                  if (matches) {
-                    for (let m of matches) {
-                      let num = parseFloat(m);
-                      if (num < 1000 && m !== "2025" && m !== "14" && m !== "49") {
-                        if (hasPercent) return m + "%";
-                        if (hasLb) return m + "lb";
-                        return m;
-                      }
-                    }
-                  }
-                }
+        // 3. Collect ALL numbers strictly AFTER the date/time header line
+        let numbers = [];
+        let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
+        for (let i = startIndex; i < lines.length; i++) {
+          let line = lines[i];
+          if (line.toLowerCase().includes("all data collected") || line.toLowerCase().includes("medical treatment")) continue;
+          
+          let matches = line.match(/(\d+\.?\d*)/g);
+          if (matches) {
+            matches.forEach(m => {
+              let num = parseFloat(m);
+              if (num < 1000) { // Filter out years like 2025
+                numbers.push(m);
               }
-            }
+            });
           }
-          return "";
         }
 
-        // Extract each metric independently via keyword matching
+        // Sequential mapping starting directly with Weight (numbers[0])
         const extracted = {
-          weight: findValueForKeywords(['weight'], false, false),
-          bmi: findValueForKeywords(['bmi'], false, false),
-          bodyFat: findValueForKeywords(['body fat', 'bodyfat'], true, false),
-          ffw: findValueForKeywords(['fat-free', 'fat free'], false, true),
-          subcutaneous: findValueForKeywords(['subcutaneous'], true, false),
-          visceral: findValueForKeywords(['visceral'], false, false),
-          bodyWater: findValueForKeywords(['body water', 'water'], true, false),
-          skeletalMuscle: findValueForKeywords(['skeletal muscle'], true, false),
-          muscleMass: findValueForKeywords(['muscle mass'], false, true),
-          musclePercent: findValueForKeywords(['muscle percentage', 'muscle percent'], true, false),
-          boneMass: findValueForKeywords(['bone mass'], false, true),
-          bonePercent: findValueForKeywords(['bone percent', 'bone percentage'], true, false),
-          protein: findValueForKeywords(['protein'], true, false),
-          bmr: findValueForKeywords(['bmr', 'kcal'], false, false),
-          metabolicAge: findValueForKeywords(['metabolic age', 'age'], false, false)
+          weight: numbers[0] || "",
+          bmi: numbers[1] || "",
+          bodyFat: numbers[2] ? numbers[2] + "%" : "",
+          ffw: numbers[3] ? numbers[3] + "lb" : "",
+          subcutaneous: numbers[4] ? numbers[4] + "%" : "",
+          visceral: numbers[5] || "",
+          bodyWater: numbers[6] ? numbers[6] + "%" : "",
+          skeletalMuscle: numbers[7] ? numbers[7] + "%" : "",
+          muscleMass: numbers[8] ? numbers[8] + "lb" : "",
+          musclePercent: numbers[9] ? numbers[9] + "%" : "",
+          boneMass: numbers[10] ? numbers[10] + "lb" : "",
+          bonePercent: numbers[11] ? numbers[11] + "%" : "",
+          protein: numbers[12] ? numbers[12] + "%" : "",
+          bmr: numbers[13] || "",
+          metabolicAge: numbers[14] || ""
         };
 
         formStructure.forEach(metric => {
           let nameLower = metric.name.toLowerCase();
           let rowIndex = parseInt(metric.rowIndex);
           
-          // STRICT FILTER: Only auto-fill Booth 13 metrics (Rows 6 to 20). Ignore Booth 9 completely!
           if (rowIndex < 6 || rowIndex > 20) return;
 
           let valToSet = "";
