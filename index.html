@@ -375,7 +375,7 @@
       });
     }
 
-    // SEQUENTIAL STREAM PARSER WITH B&W PREPROCESSING AND UNIT REMOVAL
+    // ROW-BY-ROW STRUCTURED STREAM PARSER (PREVENTS SHIFTING & DROPS UNITS)
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -400,47 +400,55 @@
           }
         }
 
-        // Collect all numbers strictly AFTER the date/time header line
-        let numbers = [];
         let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
-        
+        let numericRows = [];
+
+        // Collect numbers grouped by line (row by row) to isolate errors and prevent global shifts
         for (let i = startIndex; i < lines.length; i++) {
           let line = lines[i];
-          if (line.toLowerCase().includes("all data collected") || line.toLowerCase().includes("medical treatment")) continue;
-          
+          let lower = line.toLowerCase();
+          if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements")) {
+            continue;
+          }
+
           let matches = line.match(/(\d+\.?\d*)/g);
           if (matches) {
-            matches.forEach(m => {
-              let num = parseFloat(m);
-              if (num < 1000 && m !== "2025" && m !== "2026") {
-                numbers.push(m);
+            let validNums = matches.filter(m => m !== "2025" && m !== "2026" && parseFloat(m) < 5000);
+            if (validNums.length > 0) {
+              if (numericRows.length === 0 && validNums.length === 1 && parseFloat(validNums[0]) < 50 && !line.includes("lb") && !line.includes(".")) {
+                continue; // Skip single leading artifact numbers like "4"
               }
-            });
+              numericRows.push(validNums);
+            }
           }
         }
 
-        // Strip out leading artifact noise tokens (like standalone OCR single digits < 50 before actual weight)
-        while (numbers.length > 0 && parseFloat(numbers[0]) < 50) {
-          numbers.shift();
-        }
+        const r1 = numericRows[0] || [];
+        const r2 = numericRows[1] || [];
+        const r3 = numericRows[2] || [];
+        const r4 = numericRows[3] || [];
+        const r5 = numericRows[4] || [];
 
-        // Pure raw numerical values mapped sequentially without units
         const extracted = {
-          weight: numbers[0] || "",
-          bmi: numbers[1] || "",
-          bodyFat: numbers[2] || "",
-          ffw: numbers[3] || "",
-          subcutaneous: numbers[4] || "",
-          visceral: numbers[5] || "",
-          bodyWater: numbers[6] || "",
-          skeletalMuscle: numbers[7] || "",
-          muscleMass: numbers[8] || "",
-          musclePercent: numbers[9] || "",
-          boneMass: numbers[10] || "",
-          bonePercent: numbers[11] || "",
-          protein: numbers[12] || "",
-          bmr: numbers[13] || "",
-          metabolicAge: numbers[14] || ""
+          weight: r1[0] || "",
+          bmi: r1[1] || "",
+          bodyFat: r1[2] || "",
+
+          ffw: r2[0] || "",
+          subcutaneous: r2[1] || "",
+          visceral: r2[2] || "", // Isolated in Row 2, won't bleed into Body Water if missing
+
+          bodyWater: r3[0] || "",
+          skeletalMuscle: r3[1] || "",
+          muscleMass: r3[2] || "",
+
+          musclePercent: r4[0] || "",
+          boneMass: r4[1] || "",
+          bonePercent: r4[2] || "",
+
+          protein: r5[0] || "",
+          bmr: r5[1] || "",
+          metabolicAge: r5[2] || "" // Isolated in Row 5, ensures it is captured correctly
         };
 
         formStructure.forEach(metric => {
@@ -467,7 +475,7 @@
           else if (nameLower.includes("bmr")) valToSet = extracted.bmr;
           else if (nameLower.includes("metabolic age")) valToSet = extracted.metabolicAge;
 
-          if (valToSet) {
+          if (valToSet !== undefined) {
             const input = document.getElementById("row_" + metric.rowIndex);
             if (input) {
               input.value = valToSet;
@@ -905,7 +913,8 @@
         for (let rowIndex in res.data) {
           let input = document.getElementById("row_" + rowIndex);
           if (input) {
-            input.value = res.data[rowIndex];
+            let val = res.data[rowIndex] ? res.data[rowIndex].toString().replace(/(lb|%|kcal|G)\b/gi, "").trim() : "";
+            input.value = val;
             input.dispatchEvent(new Event('input'));
           }
         }
