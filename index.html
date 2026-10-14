@@ -375,7 +375,7 @@
       });
     }
 
-    // SEQUENTIAL STREAM PARSER: IGNORE EVERYTHING BEFORE DATE/TIME
+    // SEQUENTIAL STREAM PARSER WITH LEADING ARTIFACT CLEANUP
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -417,6 +417,11 @@
               }
             });
           }
+        }
+
+        // Strip out leading artifact noise tokens (like standalone OCR single digits < 50 before actual weight)
+        while (numbers.length > 0 && parseFloat(numbers[0]) < 50) {
+          numbers.shift();
         }
 
         const extracted = {
