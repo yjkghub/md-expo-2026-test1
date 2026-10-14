@@ -358,9 +358,7 @@
             
             for (let i = 0; i < data.length; i += 4) {
               let r = data[i], g = data[i+1], b = data[i+2];
-              // Grayscale luminance formula
               let gray = 0.299 * r + 0.587 * g + 0.114 * b;
-              // Threshold to pure black and white
               let val = gray < 210 ? 0 : 255;
               
               data[i] = val;
@@ -377,7 +375,7 @@
       });
     }
 
-    // SEQUENTIAL STREAM PARSER WITH B&W PREPROCESSING
+    // ANCHORED SEQUENTIAL STREAM PARSER WITH B&W PREPROCESSING
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -392,9 +390,42 @@
 
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        let numbers = [];
+        // Scan top lines for Korean visitor name
+        let extractedName = "";
+        for (let i = 0; i < Math.min(lines.length, 15); i++) {
+          if (/[가-힣]/.test(lines[i])) {
+            extractedName = lines[i];
+            break;
+          }
+        }
+
+        if (extractedName) {
+          const nameInput = document.getElementById("row_3");
+          if (nameInput) {
+            nameInput.value = extractedName;
+            nameInput.dispatchEvent(new Event('input'));
+          }
+        }
+
+        // Find the "Weight BMI Body Fat" header line to anchor extraction and bypass phone status bar noise
+        let headerIndex = -1;
         for (let i = 0; i < lines.length; i++) {
-          let matches = lines[i].match(/(\d+\.?\d*)/g);
+          let lower = lines[i].toLowerCase();
+          if (lower.includes("weight") && lower.includes("bmi") && lower.includes("body fat")) {
+            headerIndex = i;
+            break;
+          }
+        }
+
+        let numbers = [];
+        // Start collecting from the line immediately ABOVE the header (where 144.6lb 25.9 38.3% resides)[cite: 3]
+        let startIndex = headerIndex > 0 ? headerIndex - 1 : 0;
+        
+        for (let i = startIndex; i < lines.length; i++) {
+          let line = lines[i];
+          if (line.toLowerCase().includes("all data collected") || line.toLowerCase().includes("medical treatment")) continue;
+          
+          let matches = line.match(/(\d+\.?\d*)/g);
           if (matches) {
             matches.forEach(m => {
               let num = parseFloat(m);
