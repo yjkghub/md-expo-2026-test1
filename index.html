@@ -375,7 +375,7 @@
       });
     }
 
-    // EXACT OCCURRENCE PARSER: TRACKS DATE/TIME MARKERS FOR BOTH FIRST-TIMERS & RETURNING VISITORS
+    // ROBUST PARSER: HANDLES BOTH FIRST-TIMERS (START AT 0, IGNORING STRAY HEADER FRAGMENTS) & RETURNING VISITORS
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -403,12 +403,12 @@
 
         // Determine parsing start index:
         // - If 2+ date stamps exist, skip past the historical block to the second date stamp.
-        // - If 1 date stamp exists (first-timer), start parsing right after that date stamp to skip header fragments like "4.0".
+        // - If 1 or 0 date stamps exist (first-timer), start from index 0.
         let parseStartIndex = 0;
         if (dateTimeIndices.length >= 2) {
           parseStartIndex = dateTimeIndices[1] + 1;
-        } else if (dateTimeIndices.length === 1) {
-          parseStartIndex = dateTimeIndices[0] + 1;
+        } else {
+          parseStartIndex = 0;
         }
 
         let allNumbers = [];
@@ -424,6 +424,10 @@
           if (matches) {
             matches.forEach(m => {
               let num = parseFloat(m);
+              // For first-timers, ignore tiny stray header fragments (< 30) before weight (like IDs/ages/dates)
+              if (dateTimeIndices.length < 2 && parseStartIndex === 0 && allNumbers.length === 0 && num < 30) {
+                return;
+              }
               if (m !== "2025" && m !== "2026" && num < 5000) {
                 allNumbers.push(m);
               }
