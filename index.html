@@ -375,7 +375,7 @@
       });
     }
 
-    // SEQUENTIAL STREAM PARSER WITH LEADING ARTIFACT CLEANUP
+    // SEQUENTIAL STREAM PARSER WITH B&W PREPROCESSING AND UNIT REMOVAL
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -424,20 +424,21 @@
           numbers.shift();
         }
 
+        // Pure raw numerical values mapped sequentially without units
         const extracted = {
-          weight: numbers[0] ? numbers[0] + "lb" : "",
+          weight: numbers[0] || "",
           bmi: numbers[1] || "",
-          bodyFat: numbers[2] ? numbers[2] + "%" : "",
-          ffw: numbers[3] ? numbers[3] + "lb" : "",
-          subcutaneous: numbers[4] ? numbers[4] + "%" : "",
+          bodyFat: numbers[2] || "",
+          ffw: numbers[3] || "",
+          subcutaneous: numbers[4] || "",
           visceral: numbers[5] || "",
-          bodyWater: numbers[6] ? numbers[6] + "%" : "",
-          skeletalMuscle: numbers[7] ? numbers[7] + "%" : "",
-          muscleMass: numbers[8] ? numbers[8] + "lb" : "",
-          musclePercent: numbers[9] ? numbers[9] + "%" : "",
-          boneMass: numbers[10] ? numbers[10] + "lb" : "",
-          bonePercent: numbers[11] ? numbers[11] + "%" : "",
-          protein: numbers[12] ? numbers[12] + "%" : "",
+          bodyWater: numbers[6] || "",
+          skeletalMuscle: numbers[7] || "",
+          muscleMass: numbers[8] || "",
+          musclePercent: numbers[9] || "",
+          boneMass: numbers[10] || "",
+          bonePercent: numbers[11] || "",
+          protein: numbers[12] || "",
           bmr: numbers[13] || "",
           metabolicAge: numbers[14] || ""
         };
