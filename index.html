@@ -339,7 +339,7 @@
       }
     }
 
-    // ORIGINAL CLEAN SEQUENTIAL STREAM PARSER
+    // ROBUST SEQUENTIAL STREAM PARSER
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -353,21 +353,43 @@
 
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
+        // 1. Scan top lines for Korean visitor name
+        let extractedName = "";
+        for (let i = 0; i < Math.min(lines.length, 15); i++) {
+          if (/[가-힣]/.test(lines[i])) {
+            extractedName = lines[i];
+            break;
+          }
+        }
+
+        if (extractedName) {
+          const nameInput = document.getElementById("row_3");
+          if (nameInput) {
+            nameInput.value = extractedName;
+            nameInput.dispatchEvent(new Event('input'));
+          }
+        }
+
+        // 2. Gather all numerical tokens from the entire stream
         let numbers = [];
         for (let i = 0; i < lines.length; i++) {
-          let matches = lines[i].match(/(\d+\.?\d*)/g);
+          let line = lines[i];
+          if (line.toLowerCase().includes("all data collected") || line.toLowerCase().includes("medical treatment")) continue;
+          
+          let matches = line.match(/(\d+\.?\d*)/g);
           if (matches) {
             matches.forEach(m => {
               let num = parseFloat(m);
-              if (num < 1000) {
+              if (num < 1000 && m !== "2025" && m !== "2026") {
                 numbers.push(m);
               }
             });
           }
         }
 
+        // Sequential mapping matching the app's top summary and grid items
         const extracted = {
-          weight: numbers[0] || "",
+          weight: numbers[0] ? numbers[0] + "lb" : "",
           bmi: numbers[1] || "",
           bodyFat: numbers[2] ? numbers[2] + "%" : "",
           ffw: numbers[3] ? numbers[3] + "lb" : "",
