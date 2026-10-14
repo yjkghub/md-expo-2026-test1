@@ -321,6 +321,7 @@
     let formStructure = [];
     let allVisitors = [];
 
+    // Session-based authentication persistence
     window.addEventListener('DOMContentLoaded', () => {
       if (sessionStorage.getItem("expo_authenticated") === "true") {
         document.getElementById("auth-overlay").style.display = "none";
@@ -339,7 +340,7 @@
       }
     }
 
-    // FINAL PRECISION STREAM PARSER: IGNORES EVERYTHING BEFORE DATE/TIME, GRabs WEIGHT FIRST
+    // CLEAN STREAM PARSER: IGNORES EVERYTHING BEFORE DATE/TIME, GRABS NAME, THEN READS VALUES STARTING WITH WEIGHT
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -353,31 +354,49 @@
 
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        // Find the index of the date/time header line (e.g. "August 16, 2025")
-        let dataStartIndex = 0;
+        // 1. Locate the date/time header line index
+        let dateIndex = -1;
         for (let i = 0; i < lines.length; i++) {
-          let l = lines[i].toLowerCase();
-          if (l.includes("2025") || l.includes("2026") || l.includes("august") || l.includes("am") || l.includes("pm")) {
-            dataStartIndex = i + 1;
+          let lower = lines[i].toLowerCase();
+          if (lower.includes("2025") || lower.includes("2026") || lower.includes("august") || lower.includes("pm") || lower.includes("am")) {
+            dateIndex = i;
             break;
           }
         }
 
-        // Collect all numeric values appearing strictly AFTER the date/time header
+        // 2. Extract visitor name from the line immediately above the date/time header
+        let extractedName = "";
+        if (dateIndex > 0) {
+          let possibleNameLine = lines[dateIndex - 1];
+          if (possibleNameLine && !possibleNameLine.includes("|") && !possibleNameLine.includes("=") && !possibleNameLine.toLowerCase().includes("goal")) {
+            extractedName = possibleNameLine;
+          }
+        }
+
+        if (extractedName) {
+          const nameInput = document.getElementById("row_3");
+          if (nameInput && !nameInput.value.trim()) {
+            nameInput.value = extractedName;
+            nameInput.dispatchEvent(new Event('input'));
+          }
+        }
+
+        // 3. Gather all clean numeric values strictly appearing FROM the date/time line onward
         let numbers = [];
-        for (let i = dataStartIndex; i < lines.length; i++) {
+        let startIndex = dateIndex >= 0 ? dateIndex : 0;
+        for (let i = startIndex; i < lines.length; i++) {
           let matches = lines[i].match(/(\d+\.?\d*)/g);
           if (matches) {
             matches.forEach(m => {
               let num = parseFloat(m);
-              if (num < 1000) {
+              if (num < 1000) { // Filter out years
                 numbers.push(m);
               }
             });
           }
         }
 
-        // Direct explicit index matching for the 15 metrics starting from Weight
+        // Map sequence numbers starting directly with Weight (numbers[0])
         const extracted = {
           weight: numbers[0] || "",
           bmi: numbers[1] || "",
@@ -400,7 +419,7 @@
           let nameLower = metric.name.toLowerCase();
           let rowIndex = parseInt(metric.rowIndex);
           
-          // STRICT FILTER: Only auto-fill Booth 13 metrics (Rows 6 to 20)
+          // STRICT FILTER: Only auto-fill Booth 13 metrics (Rows 6 to 20). Ignore Booth 9 completely!
           if (rowIndex < 6 || rowIndex > 20) return;
 
           let valToSet = "";
@@ -775,7 +794,7 @@
       const groups = {};
       let lastBooth = "General Information";
 
-    formStructure.forEach((metric, index) => {
+      formStructure.forEach((metric, index) => {
         let displayIdx = index + 1;
         
         if (metric.booth && metric.booth.toString().trim() !== "") {
@@ -885,7 +904,7 @@
       .catch(err => {
         showStatus("Network Error: " + err.message, "error");
         document.getElementById("save-btn").disabled = false;
-        document.getElementById("drive-btn").disabled,disabled = false;
+        document.getElementById("drive-btn").disabled = false;
       });
     }
 
