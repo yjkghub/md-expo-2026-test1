@@ -375,7 +375,7 @@
       });
     }
 
-    // ANCHORED SEQUENTIAL STREAM PARSER WITH B&W PREPROCESSING
+    // SEQUENTIAL STREAM PARSER: IGNORE EVERYTHING BEFORE DATE/TIME
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -390,36 +390,19 @@
 
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        // Scan top lines for Korean visitor name
-        let extractedName = "";
-        for (let i = 0; i < Math.min(lines.length, 15); i++) {
-          if (/[가-힣]/.test(lines[i])) {
-            extractedName = lines[i];
-            break;
-          }
-        }
-
-        if (extractedName) {
-          const nameInput = document.getElementById("row_3");
-          if (nameInput) {
-            nameInput.value = extractedName;
-            nameInput.dispatchEvent(new Event('input'));
-          }
-        }
-
-        // Find the "Weight BMI Body Fat" header line to anchor extraction and bypass phone status bar noise
-        let headerIndex = -1;
+        // Locate date/time header line index
+        let dateIndex = -1;
         for (let i = 0; i < lines.length; i++) {
           let lower = lines[i].toLowerCase();
-          if (lower.includes("weight") && lower.includes("bmi") && lower.includes("body fat")) {
-            headerIndex = i;
+          if (lower.includes("2025") || lower.includes("2026") || lower.includes("august")) {
+            dateIndex = i;
             break;
           }
         }
 
+        // Collect all numbers strictly AFTER the date/time header line
         let numbers = [];
-        // Start collecting from the line immediately ABOVE the header (where 144.6lb 25.9 38.3% resides)[cite: 3]
-        let startIndex = headerIndex > 0 ? headerIndex - 1 : 0;
+        let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
         
         for (let i = startIndex; i < lines.length; i++) {
           let line = lines[i];
@@ -429,7 +412,7 @@
           if (matches) {
             matches.forEach(m => {
               let num = parseFloat(m);
-              if (num < 1000) {
+              if (num < 1000 && m !== "2025" && m !== "2026") {
                 numbers.push(m);
               }
             });
