@@ -356,7 +356,7 @@
       });
     }
 
-    // MULTI-BLOCK PARSER: SEPARATE CODE PATHS FOR RETURNING USERS VS. NEW USERS
+    // ROBUST MULTI-BLOCK PARSER FOR RETURNING USERS VS NEW USERS
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -368,7 +368,6 @@
         const cleanedText = text.replace(/\b[Gg]\b/g, "9");
         const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        // Detect whether this is a returning user or a new user based on timestamp/date occurrences
         let dateIndices = [];
         for (let i = 0; i < lines.length; i++) {
           let lower = lines[i].toLowerCase();
@@ -408,7 +407,7 @@
         let extracted = {};
 
         // ==========================================
-        // BLOCK A: RETURNING USER PARSING LOGIC
+        // CASE 1: RETURNING USER PARSING BLOCK
         // ==========================================
         if (isReturningUser) {
           let startIndex = dateIndices[dateIndices.length - 1] + 1;
@@ -434,6 +433,12 @@
             allNumbers.shift();
           }
 
+          let rawBmr = allNumbers[13];
+          let bmrVal = rawBmr && !rawBmr.includes(".") && parseFloat(rawBmr) > 200 ? (parseFloat(rawBmr) / 10).toFixed(1) : formatVal(rawBmr, false);
+
+          let rawAge = metabolicAgeVal || allNumbers[14];
+          let ageVal = rawAge && !rawAge.includes(".") && parseFloat(rawAge) > 100 ? (parseFloat(rawAge) / 10).toFixed(1) : formatVal(rawAge, false);
+
           extracted = {
             weight: formatVal(allNumbers[0], false),
             bmi: formatVal(allNumbers[1], false),
@@ -448,12 +453,12 @@
             boneMass: formatVal(allNumbers[10], false),
             bonePercent: formatVal(allNumbers[11], false),
             protein: formatVal(allNumbers[12], false),
-            bmr: formatVal(allNumbers[13], true),
-            metabolicAge: formatVal(metabolicAgeVal || allNumbers[14], true)
+            bmr: bmrVal,
+            metabolicAge: ageVal
           };
         } 
         // ==========================================
-        // BLOCK B: NEW USER PARSING LOGIC
+        // CASE 2: NEW USER PARSING BLOCK
         // ==========================================
         else {
           let weightIndices = [];
@@ -539,7 +544,6 @@
       }
       event.target.value = ""; 
     }
-
     function triggerPrint() {
       document.querySelectorAll("#metrics-container input").forEach(input => {
         input.setAttribute('value', input.value);
