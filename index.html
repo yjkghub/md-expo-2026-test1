@@ -375,7 +375,7 @@
       });
     }
 
-    // ROBUST 15-METRIC SEQUENTIAL STREAM PARSER WITH DECIMAL LIMITING
+    // ROBUST 15-METRIC SEQUENTIAL STREAM PARSER WITH G->9 CORRECTION
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -388,7 +388,9 @@
         
         showStatus("=== RAW OCR TEXT START ===\n" + text + "\n=== RAW OCR TEXT END ===", "success");
 
-        const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        // Correct common OCR misreads (e.g., scale font reading '9' as 'G')
+        const cleanedText = text.replace(/\b[Gg]\b/g, "9");
+        const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
         // Locate date/time header line index
         let dateIndex = -1;
