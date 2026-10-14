@@ -375,7 +375,7 @@
       });
     }
 
-    // PRECISE LAYOUT-BASED OCR PARSER
+    // EXACT WEIGHT COUNTING RULE PARSER
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -389,25 +389,24 @@
         const cleanedText = text.replace(/\b[Gg]\b/g, "9");
         const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        // Find the line index of the main current "Weight" label in the white measurements grid
-        let currentWeightLineIdx = -1;
-        for (let i = 0; i < lines.length; i++) {
-          let lower = lines[i].toLowerCase();
-          if (lower.includes("weight") && !lower.includes("goal") && !lower.includes("-") && !lower.includes("+")) {
-            currentWeightLineIdx = i;
+        // Find all line indices containing "weight"
+        let weightIndices = [];
+        lines.forEach((line, idx) => {
+          if (line.toLowerCase().includes("weight")) {
+            weightIndices.push(idx);
           }
-        }
+        });
 
-        let explicitWeightVal = "";
+        // Your counting rule:
+        // - Old user (3+ occurrences): start after 2nd "Weight" (weightIndices[1] + 1)
+        // - New user (2 occurrences): start after 1st "Weight" (weightIndices[0] + 1)
         let parseStartIndex = 0;
-
-        if (currentWeightLineIdx > 0) {
-          let prevLine = lines[currentWeightLineIdx - 1];
-          let match = prevLine.match(/(\d+\.?\d*)/);
-          if (match) {
-            explicitWeightVal = match[1];
-          }
-          parseStartIndex = currentWeightLineIdx + 1;
+        if (weightIndices.length >= 3) {
+          parseStartIndex = weightIndices[1] + 1;
+        } else if (weightIndices.length === 2) {
+          parseStartIndex = weightIndices[0] + 1;
+        } else if (weightIndices.length === 1) {
+          parseStartIndex = weightIndices[0] + 1;
         }
 
         let allNumbers = [];
@@ -455,9 +454,8 @@
           }
         }
 
-        // Map sequential extracted numbers to the exact grid metrics layout order
         const extracted = {
-          weight: formatVal(explicitWeightVal || allNumbers[0], false),
+          weight: formatVal(allNumbers[0], false),
           bmi: formatVal(allNumbers[1], false),
           bodyFat: formatVal(allNumbers[2], false),
           ffw: formatVal(allNumbers[3], false),
