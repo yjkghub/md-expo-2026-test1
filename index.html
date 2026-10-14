@@ -375,7 +375,7 @@
       });
     }
 
-    // BULLETPROOF 15-METRIC PARSER WITH CLEAN "Age" / "Metabolic Age" MATCHING
+    // BULLETPROOF PARSER WITH PRECISE FIELD MAPPING
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -436,7 +436,6 @@
           }
         }
 
-        // Direct explicit extraction after "cal"
         let metabolicAgeVal = "";
         for (let i = 0; i < lines.length; i++) {
           if (lines[i].toLowerCase().includes("cal")) {
