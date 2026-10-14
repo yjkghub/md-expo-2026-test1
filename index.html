@@ -375,7 +375,7 @@
       });
     }
 
-    // PRECISE PARSER: VALUES APPEAR *BEFORE* THE "WEIGHT" STRING (VALUE IS ABOVE LABEL)
+    // ROBUST OCR PARSER: PRECISELY PINPOINTING THE CURRENT MEASUREMENT WEIGHT IN THE WHITE GRID
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -389,24 +389,27 @@
         const cleanedText = text.replace(/\b[Gg]\b/g, "9");
         const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        // Find all line indices containing the word "weight" (case-insensitive, including "Weight goal")
-        let weightIndices = [];
-        lines.forEach((line, idx) => {
-          if (line.toLowerCase().includes("weight")) {
-            weightIndices.push(idx);
+        // Find the line index of the main current "Weight" label in the white measurements grid
+        // (Ignoring "Weight goal", history diffs with "-" or "+")
+        let currentWeightLineIdx = -1;
+        for (let i = 0; i < lines.length; i++) {
+          let lower = lines[i].toLowerCase();
+          if (lower.includes("weight") && !lower.includes("goal") && !lower.includes("-") && !lower.includes("+")) {
+            currentWeightLineIdx = i;
           }
-        });
+        }
 
-        // Determine parsing start index:
-        // - Old user (3+ occurrences: Weight goal + history weight + current weight): start after the 2nd target weight's value block (weightIndices[1] + 1)
-        // - New user (2 occurrences: Weight goal + current weight): start after the 1st target weight's value block (weightIndices[0] + 1)
+        let explicitWeightVal = "";
         let parseStartIndex = 0;
-        if (weightIndices.length >= 3) {
-          parseStartIndex = weightIndices[1] + 1;
-        } else if (weightIndices.length >= 2) {
-          parseStartIndex = weightIndices[0] + 1;
-        } else {
-          parseStartIndex = 0;
+
+        if (currentWeightLineIdx > 0) {
+          // The weight numerical value sits on the line immediately preceding the "Weight" label
+          let prevLine = lines[currentWeightLineIdx - 1];
+          let match = prevLine.match(/(\d+\.?\d*)/);
+          if (match) {
+            explicitWeightVal = match[1];
+          }
+          parseStartIndex = currentWeightLineIdx + 1;
         }
 
         let allNumbers = [];
@@ -455,21 +458,21 @@
         }
 
         const extracted = {
-          weight: formatVal(allNumbers[0], false),
-          bmi: formatVal(allNumbers[1], false),
-          bodyFat: formatVal(allNumbers[2], false),
-          ffw: formatVal(allNumbers[3], false),
-          subcutaneous: formatVal(allNumbers[4], false),
-          visceral: formatVal(allNumbers[5], true),
-          bodyWater: formatVal(allNumbers[6], false),
-          skeletalMuscle: formatVal(allNumbers[7], false, true),
-          muscleMass: formatVal(allNumbers[8], false),
-          musclePercent: formatVal(allNumbers[9], false),
-          boneMass: formatVal(allNumbers[10], false),
-          bonePercent: formatVal(allNumbers[11], false),
-          protein: formatVal(allNumbers[12], false),
-          bmr: formatVal(allNumbers[13], true, true),
-          metabolicAge: formatVal(metabolicAgeVal || allNumbers[14], false)
+          weight: formatVal(explicitWeightVal || allNumbers[0], false),
+          bmi: formatVal(allNumbers[0], false),
+          bodyFat: formatVal(allNumbers[1], false),
+          ffw: formatVal(allNumbers[2], false),
+          subcutaneous: formatVal(allNumbers[3], false),
+          visceral: formatVal(allNumbers[4], true),
+          bodyWater: formatVal(allNumbers[5], false),
+          skeletalMuscle: formatVal(allNumbers[6], false, true),
+          muscleMass: formatVal(allNumbers[7], false),
+          musclePercent: formatVal(allNumbers[8], false),
+          boneMass: formatVal(allNumbers[9], false),
+          bonePercent: formatVal(allNumbers[10], false),
+          protein: formatVal(allNumbers[11], false),
+          bmr: formatVal(allNumbers[12], true, true),
+          metabolicAge: formatVal(metabolicAgeVal || allNumbers[13], false)
         };
 
         showStatus("=== EXTRACTED VALUES ===\n" + JSON.stringify(extracted, null, 2), "success");
