@@ -375,7 +375,7 @@
       });
     }
 
-    // ROW-BY-ROW STRUCTURED STREAM PARSER (PREVENTS SHIFTING & DROPS UNITS)
+    // ROBUST 15-METRIC SEQUENTIAL STREAM PARSER WITH DECIMAL LIMITING
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -394,61 +394,67 @@
         let dateIndex = -1;
         for (let i = 0; i < lines.length; i++) {
           let lower = lines[i].toLowerCase();
-          if (lower.includes("2025") || lower.includes("2026") || lower.includes("august")) {
+          if (lower.includes("2025") || lower.includes("2026") || lower.includes("august") || lower.includes("14:49")) {
             dateIndex = i;
             break;
           }
         }
 
         let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
-        let numericRows = [];
+        let allNumbers = [];
 
-        // Collect numbers grouped by line (row by row) to isolate errors and prevent global shifts
+        // Collect all valid numbers strictly after date/time header
         for (let i = startIndex; i < lines.length; i++) {
           let line = lines[i];
           let lower = line.toLowerCase();
-          if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements")) {
+          if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements") || lower.includes("my account")) {
             continue;
           }
 
           let matches = line.match(/(\d+\.?\d*)/g);
           if (matches) {
-            let validNums = matches.filter(m => m !== "2025" && m !== "2026" && parseFloat(m) < 5000);
-            if (validNums.length > 0) {
-              if (numericRows.length === 0 && validNums.length === 1 && parseFloat(validNums[0]) < 50 && !line.includes("lb") && !line.includes(".")) {
-                continue; // Skip single leading artifact numbers like "4"
+            matches.forEach(m => {
+              let num = parseFloat(m);
+              if (m !== "2025" && m !== "2026" && num < 5000) {
+                allNumbers.push(m);
               }
-              numericRows.push(validNums);
-            }
+            });
           }
         }
 
-        const r1 = numericRows[0] || [];
-        const r2 = numericRows[1] || [];
-        const r3 = numericRows[2] || [];
-        const r4 = numericRows[3] || [];
-        const r5 = numericRows[4] || [];
+        // Drop leading single-digit OCR noise (e.g., stray "4" before weight)
+        if (allNumbers.length > 0 && parseFloat(allNumbers[0]) < 50 && !allNumbers[0].includes(".") && allNumbers.length > 1 && parseFloat(allNumbers[1]) > 100) {
+          allNumbers.shift();
+        }
+
+        // Helper to format values: limit decimals to 1 place or round to integer
+        function formatVal(valStr, isInteger = false) {
+          if (!valStr) return "";
+          let num = parseFloat(valStr);
+          if (isNaN(num)) return valStr;
+          if (isInteger) {
+            return Math.round(num).toString();
+          } else {
+            return num.toFixed(1);
+          }
+        }
 
         const extracted = {
-          weight: r1[0] || "",
-          bmi: r1[1] || "",
-          bodyFat: r1[2] || "",
-
-          ffw: r2[0] || "",
-          subcutaneous: r2[1] || "",
-          visceral: r2[2] || "", // Isolated in Row 2, won't bleed into Body Water if missing
-
-          bodyWater: r3[0] || "",
-          skeletalMuscle: r3[1] || "",
-          muscleMass: r3[2] || "",
-
-          musclePercent: r4[0] || "",
-          boneMass: r4[1] || "",
-          bonePercent: r4[2] || "",
-
-          protein: r5[0] || "",
-          bmr: r5[1] || "",
-          metabolicAge: r5[2] || "" // Isolated in Row 5, ensures it is captured correctly
+          weight: formatVal(allNumbers[0], false),
+          bmi: formatVal(allNumbers[1], false),
+          bodyFat: formatVal(allNumbers[2], false),
+          ffw: formatVal(allNumbers[3], false),
+          subcutaneous: formatVal(allNumbers[4], false),
+          visceral: formatVal(allNumbers[5], true),
+          bodyWater: formatVal(allNumbers[6], false),
+          skeletalMuscle: formatVal(allNumbers[7], false),
+          muscleMass: formatVal(allNumbers[8], true),
+          musclePercent: formatVal(allNumbers[9], false),
+          boneMass: formatVal(allNumbers[10], false),
+          bonePercent: formatVal(allNumbers[11], false),
+          protein: formatVal(allNumbers[12], false),
+          bmr: formatVal(allNumbers[13], true),
+          metabolicAge: formatVal(allNumbers[14], true)
         };
 
         formStructure.forEach(metric => {
@@ -475,7 +481,7 @@
           else if (nameLower.includes("bmr")) valToSet = extracted.bmr;
           else if (nameLower.includes("metabolic age")) valToSet = extracted.metabolicAge;
 
-          if (valToSet !== undefined) {
+          if (valToSet !== undefined && valToSet !== "") {
             const input = document.getElementById("row_" + metric.rowIndex);
             if (input) {
               input.value = valToSet;
