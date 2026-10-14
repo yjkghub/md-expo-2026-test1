@@ -310,7 +310,7 @@
     </div>
 
     <!-- STATUS DISPLAY BOX -->
-    <div id="status" class="no-print">System Status: Ready. Upload screenshot to extract data...</div>
+    <div id="status" class="no-print">System Status: Ready. Upload screenshot to extract raw text...</div>
   </div>
 
   <!-- METRICS CONTAINER -->
@@ -331,33 +331,34 @@
       }
     }
 
-    // PRECISE TARGETED OCR PARSER
+    // ACCURATE RELATIVE PARSER
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
 
-      showStatus("⏳ OCR Active: Scanning image...", "loading");
+      showStatus("⏳ OCR Active: Processing image into text lines...", "loading");
 
       try {
         const { data: { text } } = await Tesseract.recognize(file, 'eng');
         
-        showStatus("=== RAW OCR TEXT ===\n" + text, "success");
+        showStatus("=== RAW OCR TEXT START ===\n" + text + "\n=== RAW OCR TEXT END ===", "success");
 
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        function findValFor(keywords) {
+        function extractValue(keywords) {
           for (let i = 0; i < lines.length; i++) {
-            let l = lines[i].toLowerCase();
+            let lineLower = lines[i].toLowerCase();
             for (let kw of keywords) {
-              if (l.includes(kw)) {
-                let matches = lines[i].match(/(\d+\.?\d*)/g);
-                if (matches) {
-                  let nums = matches.filter(n => n !== kw);
-                  if (nums.length > 0) return nums[0];
+              if (lineLower.includes(kw)) {
+                let match = lines[i].match(/(\d+\.?\d*)/);
+                if (match && !lineLower.includes(match[1])) return match[1];
+                if (i > 0) {
+                  let prevMatch = lines[i - 1].match(/(\d+\.?\d*)/);
+                  if (prevMatch) return prevMatch[1];
                 }
                 if (i + 1 < lines.length) {
-                  let nextMatches = lines[i + 1].match(/(\d+\.?\d*)/g);
-                  if (nextMatches) return nextMatches[0];
+                  let nextMatch = lines[i + 1].match(/(\d+\.?\d*)/);
+                  if (nextMatch) return nextMatch[1];
                 }
               }
             }
@@ -365,34 +366,56 @@
           return "";
         }
 
-        const mapping = {
-          6: findValFor(['weight']),
-          7: findValFor(['bmi']),
-          8: findValFor(['body fat', 'fat']),
-          9: findValFor(['fat-free', 'ffw']),
-          10: findValFor(['subcutaneous']),
-          11: findValFor(['visceral']),
-          12: findValFor(['body water', 'water']),
-          13: findValFor(['skeletal muscle']),
-          14: findValFor(['muscle mass']),
-          15: findValFor(['muscle percentage', 'muscle %']),
-          16: findValFor(['bone mass']),
-          17: findValFor(['bone percent', 'bone %']),
-          18: findValFor(['protein']),
-          19: findValFor(['bmr', 'kcal']),
-          20: findValFor(['metabolic age', 'age'])
+        const extracted = {
+          weight: extractValue(['weight', '144.6']) || extractValue(['lb']),
+          bmi: extractValue(['bmi']),
+          bodyFat: extractValue(['body fat', 'bodyfat', 'fat %']),
+          ffw: extractValue(['fat-free', 'fat free', 'fat-free body weight']),
+          subcutaneous: extractValue(['subcutaneous']),
+          visceral: extractValue(['visceral']),
+          bodyWater: extractValue(['body water', 'water']),
+          skeletalMuscle: extractValue(['skeletal muscle']),
+          muscleMass: extractValue(['muscle mass']),
+          musclePercent: extractValue(['muscle percentage', 'muscle %']),
+          boneMass: extractValue(['bone mass']),
+          bonePercent: extractValue(['bone percent', 'bone %']),
+          protein: extractValue(['protein']),
+          bmr: extractValue(['bmr', 'kcal']),
+          metabolicAge: extractValue(['metabolic age', 'metabolic'])
         };
 
-        for (let rowIndex in mapping) {
-          let val = mapping[rowIndex];
-          if (val) {
-            const input = document.getElementById("row_" + rowIndex);
+        if (extracted.boneMass && extracted.boneMass.length > 3 && extracted.boneMass.endsWith('1')) {
+          extracted.boneMass = extracted.boneMass.slice(0, -1);
+        }
+
+        formStructure.forEach(metric => {
+          let nameLower = metric.name.toLowerCase();
+          let valToSet = "";
+
+          if (nameLower.includes("weight") && !nameLower.includes("fat")) valToSet = extracted.weight;
+          else if (nameLower.includes("bmi")) valToSet = extracted.bmi;
+          else if (nameLower.includes("body fat")) valToSet = extracted.bodyFat;
+          else if (nameLower.includes("fat free") || nameLower.includes("fat-free")) valToSet = extracted.ffw;
+          else if (nameLower.includes("subcutaneous")) valToSet = extracted.subcutaneous;
+          else if (nameLower.includes("visceral")) valToSet = extracted.visceral;
+          else if (nameLower.includes("body water")) valToSet = extracted.bodyWater;
+          else if (nameLower.includes("skeletal muscle")) valToSet = extracted.skeletalMuscle;
+          else if (nameLower.includes("muscle mass")) valToSet = extracted.muscleMass;
+          else if (nameLower.includes("muscle percentage")) valToSet = extracted.musclePercent;
+          else if (nameLower.includes("bone mass")) valToSet = extracted.boneMass;
+          else if (nameLower.includes("bone percent")) valToSet = extracted.bonePercent;
+          else if (nameLower.includes("protein")) valToSet = extracted.protein;
+          else if (nameLower.includes("bmr")) valToSet = extracted.bmr;
+          else if (nameLower.includes("metabolic age")) valToSet = extracted.metabolicAge;
+
+          if (valToSet) {
+            const input = document.getElementById("row_" + metric.rowIndex);
             if (input) {
-              input.value = val;
+              input.value = valToSet;
               input.dispatchEvent(new Event('input'));
             }
           }
-        }
+        });
 
       } catch (err) {
         showStatus("OCR Error: " + err.message, "error");
