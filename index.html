@@ -321,7 +321,6 @@
     let formStructure = [];
     let allVisitors = [];
 
-    // Check session memory on load so you don't have to re-enter the password
     window.addEventListener('DOMContentLoaded', () => {
       if (sessionStorage.getItem("expo_authenticated") === "true") {
         document.getElementById("auth-overlay").style.display = "none";
@@ -340,7 +339,7 @@
       }
     }
 
-    // ACCURATE PARSER WITH TOP-WEIGHT EXTRACTION & STRICT BOOTH 13 FILTER
+    // FINAL PRECISION STREAM PARSER: IGNORES EVERYTHING BEFORE DATE/TIME, GRabs WEIGHT FIRST
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -354,85 +353,47 @@
 
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        // 1. Dedicated precise extraction for the top weight dial (e.g., 144.6 lb)
-        let topWeight = "";
-        for (let i = 0; i < Math.min(lines.length, 15); i++) {
-          let line = lines[i];
-          let m = line.match(/(\d{2,3}\.\d)/);
-          if (m && parseFloat(m[1]) > 50 && parseFloat(m[1]) < 400) {
-            topWeight = m[1];
+        // Find the index of the date/time header line (e.g. "August 16, 2025")
+        let dataStartIndex = 0;
+        for (let i = 0; i < lines.length; i++) {
+          let l = lines[i].toLowerCase();
+          if (l.includes("2025") || l.includes("2026") || l.includes("august") || l.includes("am") || l.includes("pm")) {
+            dataStartIndex = i + 1;
             break;
           }
         }
-        // Fallback search for weight keyword or lb
-        if (!topWeight) {
-          for (let line of lines) {
-            if (line.toLowerCase().includes("weight") || line.toLowerCase().includes("lb")) {
-              let m = line.match(/(\d{2,3}\.\d|\d{2,3})/);
-              if (m && parseFloat(m[1]) > 50 && parseFloat(m[1]) < 400) {
-                topWeight = m[1];
-                break;
-              }
-            }
-          }
-        }
 
-        // Collect remaining clean sequence numbers
+        // Collect all numeric values appearing strictly AFTER the date/time header
         let numbers = [];
-        lines.forEach(line => {
-          let matches = line.match(/(\d+\.?\d*)/g);
+        for (let i = dataStartIndex; i < lines.length; i++) {
+          let matches = lines[i].match(/(\d+\.?\d*)/g);
           if (matches) {
             matches.forEach(m => {
               let num = parseFloat(m);
-              if (num < 1000 && m !== "2025" && m !== "14" && m !== "49") {
+              if (num < 1000) {
                 numbers.push(m);
               }
             });
           }
-        });
-
-        // Ensure weight is front of numbers if found
-        if (topWeight && numbers[0] !== topWeight) {
-          numbers.unshift(topWeight);
         }
 
-        function extractValue(keywords) {
-          for (let i = 0; i < lines.length; i++) {
-            let lineLower = lines[i].toLowerCase();
-            for (let kw of keywords) {
-              if (lineLower.includes(kw)) {
-                let match = lines[i].match(/(\d+\.?\d*)/);
-                if (match && !lineLower.includes(match[1])) return match[1];
-                if (i > 0) {
-                  let prevMatch = lines[i - 1].match(/(\d+\.?\d*)/);
-                  if (prevMatch) return prevMatch[1];
-                }
-                if (i + 1 < lines.length) {
-                  let nextMatch = lines[i + 1].match(/(\d+\.?\d*)/);
-                  if (nextMatch) return nextMatch[1];
-                }
-              }
-            }
-          }
-          return "";
-        }
-
+        // Direct explicit index matching for the 15 metrics starting from Weight
         const extracted = {
-          weight: topWeight || numbers[0] || extractValue(['weight']),
-          bmi: numbers[1] || extractValue(['bmi']),
-          bodyFat: numbers[2] ? numbers[2] + "%" : extractValue(['body fat', 'bodyfat']),
-          ffw: numbers[3] ? numbers[3] + "lb" : extractValue(['fat-free', 'fat free']),
-          subcutaneous: numbers[4] ? numbers[4] + "%" : extractValue(['subcutaneous']),
-          visceral: numbers[5] || extractValue(['visceral']),
-          bodyWater: numbers[6] ? numbers[6] + "%" : extractValue(['body water', 'water']),
-          skeletalMuscle: numbers[7] ? numbers[7] + "%" : extractValue(['skeletal muscle']),
-          muscleMass: numbers[8] ? numbers[8] + "lb" : extractValue(['muscle mass']),
-          musclePercent: numbers[9] ? numbers[9] + "%" : extractValue(['muscle percentage']),
-          boneMass: numbers[10] ? numbers[10] + "lb" : extractValue(['bone mass']),
-          bonePercent: numbers[11] ? numbers[11] + "%" : extractValue(['bone percent']),
-          protein: numbers[12] ? numbers[12] + "%" : extractValue(['protein']),
-          bmr: numbers[13] || extractValue(['bmr', 'kcal']),
-          metabolicAge: numbers[14] || extractValue(['metabolic age'])
+          weight: numbers[0] || "",
+          bmi: numbers[1] || "",
+          bodyFat: numbers[2] ? numbers[2] + "%" : "",
+          ffw: numbers[3] ? numbers[3] + "lb" : "",
+          subcutaneous: numbers[4] ? numbers[4] + "%" : "",
+          visceral: numbers[5] || "",
+          bodyWater: numbers[6] ? numbers[6] + "%" : "",
+          skeletalMuscle: numbers[7] ? numbers[7] + "%" : "",
+          muscleMass: numbers[8] ? numbers[8] + "lb" : "",
+          musclePercent: numbers[9] ? numbers[9] + "%" : "",
+          boneMass: numbers[10] ? numbers[10] + "lb" : "",
+          bonePercent: numbers[11] ? numbers[11] + "%" : "",
+          protein: numbers[12] ? numbers[12] + "%" : "",
+          bmr: numbers[13] || "",
+          metabolicAge: numbers[14] || ""
         };
 
         formStructure.forEach(metric => {
@@ -814,7 +775,7 @@
       const groups = {};
       let lastBooth = "General Information";
 
-      formStructure.forEach((metric, index) => {
+    formStructure.forEach((metric, index) => {
         let displayIdx = index + 1;
         
         if (metric.booth && metric.booth.toString().trim() !== "") {
@@ -924,7 +885,7 @@
       .catch(err => {
         showStatus("Network Error: " + err.message, "error");
         document.getElementById("save-btn").disabled = false;
-        document.getElementById("drive-btn").disabled = false;
+        document.getElementById("drive-btn").disabled,disabled = false;
       });
     }
 
