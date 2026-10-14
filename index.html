@@ -375,7 +375,7 @@
       });
     }
 
-    // ROBUST PARSER: HANDLES BOTH RETURNING (2+ DATES) & NEW (1 DATE) VISITORS PERFECTLY
+    // PRECISE PARSER: VALUES APPEAR *BEFORE* THE "WEIGHT" STRING (VALUE IS ABOVE LABEL)
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -389,26 +389,24 @@
         const cleanedText = text.replace(/\b[Gg]\b/g, "9");
         const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        const months = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
-        
-        let dateTimeIndices = [];
+        // Find all line indices containing the word "weight" (case-insensitive, including "Weight goal")
+        let weightIndices = [];
         lines.forEach((line, idx) => {
-          let lower = line.toLowerCase();
-          let hasMonth = months.some(m => lower.includes(m));
-          let hasTimeOrYear = lower.includes("2025") || lower.includes("2026") || lower.includes(":");
-          if (hasMonth && hasTimeOrYear) {
-            dateTimeIndices.push(idx);
+          if (line.toLowerCase().includes("weight")) {
+            weightIndices.push(idx);
           }
         });
 
         // Determine parsing start index:
-        // - Returning visitor (2+ date stamps): skip past the historical block to the second date stamp.
-        // - First-timer / New visitor (1 date stamp): start right after the single date stamp to land directly on the white measurement grid.
+        // - Old user (3+ occurrences: Weight goal + history weight + current weight): start after the 2nd target weight's value block (weightIndices[1] + 1)
+        // - New user (2 occurrences: Weight goal + current weight): start after the 1st target weight's value block (weightIndices[0] + 1)
         let parseStartIndex = 0;
-        if (dateTimeIndices.length >= 2) {
-          parseStartIndex = dateTimeIndices[1] + 1;
-        } else if (dateTimeIndices.length === 1) {
-          parseStartIndex = dateTimeIndices[0] + 1;
+        if (weightIndices.length >= 3) {
+          parseStartIndex = weightIndices[1] + 1;
+        } else if (weightIndices.length >= 2) {
+          parseStartIndex = weightIndices[0] + 1;
+        } else {
+          parseStartIndex = 0;
         }
 
         let allNumbers = [];
