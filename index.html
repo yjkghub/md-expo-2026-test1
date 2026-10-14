@@ -375,7 +375,7 @@
       });
     }
 
-    // ORIGINAL WORKING PARSER LOGIC
+    // ORIGINAL EXACT COUNTING PARSER LOGIC
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -389,7 +389,6 @@
         const cleanedText = text.replace(/\b[Gg]\b/g, "9");
         const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        // Find all line indices containing "Weight"
         let weightIndices = [];
         lines.forEach((line, idx) => {
           if (line.includes("Weight")) {
@@ -397,7 +396,6 @@
           }
         });
 
-        // Parse start index based on occurrences count
         let parseStartIndex = 0;
         if (weightIndices.length >= 3) {
           parseStartIndex = weightIndices[1] + 1;
