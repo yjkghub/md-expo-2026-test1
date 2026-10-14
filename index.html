@@ -339,55 +339,72 @@
       }
     }
 
-    // ROBUST SEQUENTIAL STREAM PARSER
+    // CANVAS PREPROCESSING HELPER TO FORCE COLORED TEXT INTO HIGH-CONTRAST BLACK
+    function preprocessImage(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const img = new Image();
+          img.onload = function() {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            
+            ctx.drawImage(img, 0, 0);
+            
+            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imgData.data;
+            
+            // High-contrast binarization: turns light yellow/pink colored text into pure black on white background
+            for (let i = 0; i < data.length; i += 4) {
+              let r = data[i], g = data[i+1], b = data[i+2];
+              let avg = (r + g + b) / 3;
+              let val = avg < 220 ? 0 : 255;
+              data[i] = val;
+              data[i+1] = val;
+              data[i+2] = val;
+            }
+            
+            ctx.putImageData(imgData, 0, 0);
+            resolve(canvas.toDataURL('image/jpeg'));
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // ORIGINAL CLEAN SEQUENTIAL STREAM PARSER WITH IMAGE PREPROCESSING
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
 
-      showStatus("⏳ OCR Active: Processing image...", "loading");
+      showStatus("⏳ OCR Active: Preprocessing image & scanning...", "loading");
 
       try {
-        const { data: { text } } = await Tesseract.recognize(file, 'eng');
+        // Preprocess image to make colored top text readable by Tesseract
+        const processedImageUrl = await preprocessImage(file);
+
+        const { data: { text } } = await Tesseract.recognize(processedImageUrl, 'eng');
         
         showStatus("=== RAW OCR TEXT START ===\n" + text + "\n=== RAW OCR TEXT END ===", "success");
 
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        // 1. Scan top lines for Korean visitor name
-        let extractedName = "";
-        for (let i = 0; i < Math.min(lines.length, 15); i++) {
-          if (/[가-힣]/.test(lines[i])) {
-            extractedName = lines[i];
-            break;
-          }
-        }
-
-        if (extractedName) {
-          const nameInput = document.getElementById("row_3");
-          if (nameInput) {
-            nameInput.value = extractedName;
-            nameInput.dispatchEvent(new Event('input'));
-          }
-        }
-
-        // 2. Gather all numerical tokens from the entire stream
         let numbers = [];
         for (let i = 0; i < lines.length; i++) {
-          let line = lines[i];
-          if (line.toLowerCase().includes("all data collected") || line.toLowerCase().includes("medical treatment")) continue;
-          
-          let matches = line.match(/(\d+\.?\d*)/g);
+          let matches = lines[i].match(/(\d+\.?\d*)/g);
           if (matches) {
             matches.forEach(m => {
               let num = parseFloat(m);
-              if (num < 1000 && m !== "2025" && m !== "2026") {
+              if (num < 1000) {
                 numbers.push(m);
               }
             });
           }
         }
 
-        // Sequential mapping matching the app's top summary and grid items
         const extracted = {
           weight: numbers[0] ? numbers[0] + "lb" : "",
           bmi: numbers[1] || "",
