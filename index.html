@@ -325,7 +325,7 @@
       }
     }
 
-    // ORIGINAL WORKING PARSER + TARGETED FIXES FOR #11, #16, AND #20
+    // RESTORED STABLE WORKING PARSER WITH TARGETED FIXES FOR #11, #16, AND #20
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -368,7 +368,7 @@
           bodyFat: findValueAfterKeyword(['body fat', 'bodyfat', 'fat %']),
           ffw: findValueAfterKeyword(['fat-free', 'fat free', 'fat-free body weight']),
           subcutaneous: findValueAfterKeyword(['subcutaneous']),
-          visceral: findValueAfterKeyword(['visceral fat', 'visceral', 'visceralfat']), // Fixed #11
+          visceral: findValueAfterKeyword(['visceral']), // Fixed #11
           bodyWater: findValueAfterKeyword(['body water', 'water']),
           skeletalMuscle: findValueAfterKeyword(['skeletal muscle']),
           muscleMass: findValueAfterKeyword(['muscle mass']),
@@ -377,7 +377,7 @@
           bonePercent: findValueAfterKeyword(['bone percent', 'bone %']),
           protein: findValueAfterKeyword(['protein']),
           bmr: findValueAfterKeyword(['bmr', 'kcal']),
-          metabolicAge: findValueAfterKeyword(['metabolic age', 'metabolic', 'age']) // Fixed #20
+          metabolicAge: findValueAfterKeyword(['metabolic age', 'metabolic']) // Fixed #20
         };
 
         // Fixed #16: Strip trailing '1' if captured from 'lb' (e.g., 5.41 -> 5.4)
