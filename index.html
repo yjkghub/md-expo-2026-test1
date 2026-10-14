@@ -375,7 +375,7 @@
       });
     }
 
-    // ROBUST 15-METRIC STREAM PARSER WITH DIRECT TOKEN EXTRACTION AFTER 'cal'
+    // ROBUST 15-METRIC STREAM PARSER WITH DIRECT 'CAL' EXTRACTION & BROAD FIELD MAPPING
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -386,8 +386,6 @@
         const bwImageUrl = await convertToBlackAndWhite(file);
         const { data: { text } } = await Tesseract.recognize(bwImageUrl, 'eng');
         
-        showStatus("=== RAW OCR TEXT START ===\n" + text + "\n=== RAW OCR TEXT END ===", "success");
-
         // Preprocess text: replace standalone 'G' or 'g' with '9'
         const cleanedText = text.replace(/\b[Gg]\b/g, "9");
         const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
@@ -443,26 +441,30 @@
           }
         }
 
-        // DIRECT TOKEN EXTRACTION FOR METABOLIC AGE AFTER 'cal'
+        // DIRECT EXPLICIT EXTRACTION FOR METABOLIC AGE AFTER "cal"
         let metabolicAgeVal = "";
-        
-        // Split the full raw text into words/tokens to find 'cal' and the token immediately following it
-        const tokens = cleanedText.replace(/\s+/g, ' ').split(' ');
-        for (let i = 0; i < tokens.length; i++) {
-          if (tokens[i].toLowerCase().includes("cal")) {
-            // Check the next token(s) for a standalone integer
-            for (let j = i + 1; j < Math.min(i + 3, tokens.length); j++) {
-              let cleanNum = tokens[j].replace(/[^0-9]/g, '');
-              if (cleanNum !== "") {
-                metabolicAgeVal = cleanNum;
+        for (let i = 0; i < lines.length; i++) {
+          let lineLower = lines[i].toLowerCase();
+          if (lineLower.includes("cal")) {
+            let parts = lines[i].split(/cal/i);
+            if (parts.length > 1) {
+              let remainderNums = parts[1].match(/(\d+)/g);
+              if (remainderNums && remainderNums.length > 0) {
+                metabolicAgeVal = remainderNums[0];
                 break;
               }
             }
-            if (metabolicAgeVal) break;
+            if (!metabolicAgeVal && i + 1 < lines.length) {
+              let nextNums = lines[i + 1].match(/(\d+)/g);
+              if (nextNums && nextNums.length > 0) {
+                metabolicAgeVal = nextNums[0];
+                break;
+              }
+            }
           }
         }
 
-        // Fallback: if not found via token search, take the 15th number or last number
+        // Fallback: if not found via 'cal', take index 14 or last number
         if (!metabolicAgeVal) {
           if (allNumbers.length >= 15) {
             metabolicAgeVal = allNumbers[14];
@@ -489,6 +491,9 @@
           metabolicAge: formatVal(metabolicAgeVal, true)
         };
 
+        // DEBUG LOG TO VERIFY EXACT EXTRACTED VALUES
+        showStatus("=== OCR EXTRACTED VALUES ===\n" + JSON.stringify(extracted, null, 2), "success");
+
         formStructure.forEach(metric => {
           let nameLower = metric.name.toLowerCase();
           let rowIndex = parseInt(metric.rowIndex);
@@ -511,7 +516,7 @@
           else if (nameLower.includes("bone percent")) valToSet = extracted.bonePercent;
           else if (nameLower.includes("protein")) valToSet = extracted.protein;
           else if (nameLower.includes("bmr")) valToSet = extracted.bmr;
-          else if (nameLower.includes("metabolic age")) valToSet = extracted.metabolicAge;
+          else if (nameLower.includes("metabolic") || nameLower.includes("age") || nameLower.includes("mat.")) valToSet = extracted.metabolicAge;
 
           if (valToSet !== undefined && valToSet !== "") {
             const input = document.getElementById("row_" + metric.rowIndex);
