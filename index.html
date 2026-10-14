@@ -331,12 +331,12 @@
       }
     }
 
-    // ACCURATE PARSER WITH DEDICATED WEIGHT CAPTURE & STRICT BOOTH 13 FILTER
+    // ROBUST DIRECT TOKEN STREAM PARSER FOR INBODY SCREENSHOTS
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
 
-      showStatus("⏳ OCR Active: Processing image into text lines...", "loading");
+      showStatus("⏳ OCR Active: Processing image...", "loading");
 
       try {
         const { data: { text } } = await Tesseract.recognize(file, 'eng');
@@ -345,6 +345,23 @@
 
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
+        // Collect all standalone valid numbers/decimals from the token stream in exact order
+        let numbers = [];
+        lines.forEach(line => {
+          // Skip header timestamps/metadata if needed, but grab matching digits
+          let matches = line.match(/(\d+\.?\d*)/g);
+          if (matches) {
+            matches.forEach(m => {
+              let num = parseFloat(m);
+              // Filter out year/dates like 2025, 14, 49
+              if (num < 1000 && m !== "2025" && m !== "14" && m !== "49") {
+                numbers.push(m);
+              }
+            });
+          }
+        });
+
+        // Fallback helper to search by keywords
         function extractValue(keywords) {
           for (let i = 0; i < lines.length; i++) {
             let lineLower = lines[i].toLowerCase();
@@ -366,53 +383,30 @@
           return "";
         }
 
-        let weightVal = "";
-        for (let line of lines) {
-          if (line.toLowerCase().includes("weight") || line.toLowerCase().includes("lb")) {
-            let m = line.match(/(\d{2,3}\.\d|\d{2,3})/);
-            if (m && parseFloat(m[1]) > 30 && parseFloat(m[1]) < 500) {
-              weightVal = m[1];
-              break;
-            }
-          }
-        }
-        if (!weightVal) {
-          for (let line of lines) {
-            let m = line.match(/^(\d{2,3}\.\d)/);
-            if (m) {
-              weightVal = m[1];
-              break;
-            }
-          }
-        }
-
+        // Direct extraction matching order of Inbody App grid layout
         const extracted = {
-          weight: weightVal || extractValue(['weight', 'lb']),
-          bmi: extractValue(['bmi']),
-          bodyFat: extractValue(['body fat', 'bodyfat', 'fat %']),
-          ffw: extractValue(['fat-free', 'fat free', 'fat-free body weight']),
-          subcutaneous: extractValue(['subcutaneous']),
-          visceral: extractValue(['visceral']),
-          bodyWater: extractValue(['body water', 'water']),
-          skeletalMuscle: extractValue(['skeletal muscle']),
-          muscleMass: extractValue(['muscle mass']),
-          musclePercent: extractValue(['muscle percentage', 'muscle %']),
-          boneMass: extractValue(['bone mass']),
-          bonePercent: extractValue(['bone percent', 'bone %']),
-          protein: extractValue(['protein']),
-          bmr: extractValue(['bmr', 'kcal']),
-          metabolicAge: extractValue(['metabolic age', 'metabolic'])
+          weight: numbers[0] || extractValue(['weight', 'lb']),
+          bmi: numbers[1] || extractValue(['bmi']),
+          bodyFat: numbers[2] ? numbers[2] + "%" : extractValue(['body fat', 'bodyfat']),
+          ffw: numbers[3] ? numbers[3] + "lb" : extractValue(['fat-free', 'fat free']),
+          subcutaneous: numbers[4] ? numbers[4] + "%" : extractValue(['subcutaneous']),
+          visceral: numbers[5] || extractValue(['visceral']),
+          bodyWater: numbers[6] ? numbers[6] + "%" : extractValue(['body water', 'water']),
+          skeletalMuscle: numbers[7] ? numbers[7] + "%" : extractValue(['skeletal muscle']),
+          muscleMass: numbers[8] ? numbers[8] + "lb" : extractValue(['muscle mass']),
+          musclePercent: numbers[9] ? numbers[9] + "%" : extractValue(['muscle percentage']),
+          boneMass: numbers[10] ? numbers[10] + "lb" : extractValue(['bone mass']),
+          bonePercent: numbers[11] ? numbers[11] + "%" : extractValue(['bone percent']),
+          protein: numbers[12] ? numbers[12] + "%" : extractValue(['protein']),
+          bmr: numbers[13] || extractValue(['bmr', 'kcal']),
+          metabolicAge: numbers[14] || extractValue(['metabolic age'])
         };
-
-        if (extracted.boneMass && extracted.boneMass.length > 3 && extracted.boneMass.endsWith('1')) {
-          extracted.boneMass = extracted.boneMass.slice(0, -1);
-        }
 
         formStructure.forEach(metric => {
           let nameLower = metric.name.toLowerCase();
           let rowIndex = parseInt(metric.rowIndex);
           
-          // STRICT FILTER: Only auto-fill Booth 13 metrics (Rows 6 to 20). Ignore Booth 9 completely!
+          // STRICT FILTER: Only auto-fill Booth 13 metrics (Rows 6 to 20)
           if (rowIndex < 6 || rowIndex > 20) return;
 
           let valToSet = "";
