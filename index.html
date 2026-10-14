@@ -375,7 +375,7 @@
       });
     }
 
-    // ROBUST PARSER: PINPOINTS THE CURRENT MEASUREMENT GRID VIA "EIGHT" MATCHING
+    // ORIGINAL WORKING PARSER LOGIC
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -389,24 +389,23 @@
         const cleanedText = text.replace(/\b[Gg]\b/g, "9");
         const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        // Find the correct current weight row index by locating the last valid "eight"/"weight" line
-        let currentWeightLineIdx = -1;
+        // Find all line indices containing "Weight"
+        let weightIndices = [];
         lines.forEach((line, idx) => {
-          let lower = line.toLowerCase();
-          if ((lower.includes("weight") || lower.includes("eight")) && !lower.includes("goal") && !lower.includes("-") && !lower.includes("+")) {
-            currentWeightLineIdx = idx;
+          if (line.includes("Weight")) {
+            weightIndices.push(idx);
           }
         });
 
-        if (currentWeightLineIdx === -1) {
-          lines.forEach((line, idx) => {
-            if (line.toLowerCase().includes("eight")) {
-              currentWeightLineIdx = idx;
-            }
-          });
+        // Parse start index based on occurrences count
+        let parseStartIndex = 0;
+        if (weightIndices.length >= 3) {
+          parseStartIndex = weightIndices[1] + 1;
+        } else if (weightIndices.length === 2) {
+          parseStartIndex = weightIndices[0] + 1;
+        } else if (weightIndices.length === 1) {
+          parseStartIndex = weightIndices[0] + 1;
         }
-
-        let parseStartIndex = currentWeightLineIdx > 0 ? currentWeightLineIdx + 1 : 0;
 
         let allNumbers = [];
 
