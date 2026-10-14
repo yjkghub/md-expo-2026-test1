@@ -325,12 +325,12 @@
       }
     }
 
-    // PRECISE PRECEDING-LINE OCR PARSING
+    // ORIGINAL WORKING PARSER + TARGETED FIXES FOR #11, #16, AND #20
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
 
-      showStatus("Reading InBody screenshot...", "loading");
+      showStatus("Reading InBody screenshot to text...", "loading");
 
       try {
         const { data: { text } } = await Tesseract.recognize(file, 'eng');
@@ -341,20 +341,21 @@
 
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        function getNumberAboveLabel(keywords) {
+        function findValueAfterKeyword(keywords) {
           for (let i = 0; i < lines.length; i++) {
-            let l = lines[i].toLowerCase();
+            let lineLower = lines[i].toLowerCase();
             for (let kw of keywords) {
-              if (l.includes(kw)) {
-                // Check the line immediately above (where values sit in app card grids)
-                if (i > 0) {
-                  let m = lines[i - 1].replace(/[^\d\.]/g, '');
-                  let num = parseFloat(m);
-                  if (!isNaN(num) && num > 0) return m;
+              if (lineLower.includes(kw)) {
+                let match = lines[i].match(/([0-9]+\.?[0-9]*)/);
+                if (match && !lineLower.includes(match[1])) return match[1];
+                if (i + 1 < lines.length) {
+                  let nextMatch = lines[i + 1].match(/([0-9]+\.?[0-9]*)/);
+                  if (nextMatch) return nextMatch[1];
                 }
-                // Check current line as fallback
-                let currM = lines[i].match(/(\d+\.?\d*)/);
-                if (currM && !currM[1].includes(kw)) return currM[1];
+                if (i > 0) {
+                  let prevMatch = lines[i - 1].match(/([0-9]+\.?[0-9]*)/);
+                  if (prevMatch) return prevMatch[1];
+                }
               }
             }
           }
@@ -362,24 +363,24 @@
         }
 
         const extracted = {
-          weight: getNumberAboveLabel(['weight']) || getNumberAboveLabel(['144.6']),
-          bmi: getNumberAboveLabel(['bmi']),
-          bodyFat: getNumberAboveLabel(['body fat', 'bodyfat']),
-          ffw: getNumberAboveLabel(['fat-free', 'fat free']),
-          subcutaneous: getNumberAboveLabel(['subcutaneous']),
-          visceral: getNumberAboveLabel(['visceral']),
-          bodyWater: getNumberAboveLabel(['body water', 'water']),
-          skeletalMuscle: getNumberAboveLabel(['skeletal muscle']),
-          muscleMass: getNumberAboveLabel(['muscle mass']),
-          musclePercent: getNumberAboveLabel(['muscle percentage', 'muscle %']),
-          boneMass: getNumberAboveLabel(['bone mass']),
-          bonePercent: getNumberAboveLabel(['bone percent', 'bone %']),
-          protein: getNumberAboveLabel(['protein']),
-          bmr: getNumberAboveLabel(['bmr', 'kcal']),
-          metabolicAge: getNumberAboveLabel(['metabolic age', 'metabolic'])
+          weight: findValueAfterKeyword(['weight', '144.6']) || findValueAfterKeyword(['lb']),
+          bmi: findValueAfterKeyword(['bmi']),
+          bodyFat: findValueAfterKeyword(['body fat', 'bodyfat', 'fat %']),
+          ffw: findValueAfterKeyword(['fat-free', 'fat free', 'fat-free body weight']),
+          subcutaneous: findValueAfterKeyword(['subcutaneous']),
+          visceral: findValueAfterKeyword(['visceral fat', 'visceral', 'visceralfat']), // Fixed #11
+          bodyWater: findValueAfterKeyword(['body water', 'water']),
+          skeletalMuscle: findValueAfterKeyword(['skeletal muscle']),
+          muscleMass: findValueAfterKeyword(['muscle mass']),
+          musclePercent: findValueAfterKeyword(['muscle percentage', 'muscle %']),
+          boneMass: findValueAfterKeyword(['bone mass']),
+          bonePercent: findValueAfterKeyword(['bone percent', 'bone %']),
+          protein: findValueAfterKeyword(['protein']),
+          bmr: findValueAfterKeyword(['bmr', 'kcal']),
+          metabolicAge: findValueAfterKeyword(['metabolic age', 'metabolic', 'age']) // Fixed #20
         };
 
-        // Clean up Bone Mass trailing unit artifacts (e.g. 5.41 -> 5.4)
+        // Fixed #16: Strip trailing '1' if captured from 'lb' (e.g., 5.41 -> 5.4)
         if (extracted.boneMass && extracted.boneMass.length > 3 && extracted.boneMass.endsWith('1')) {
           extracted.boneMass = extracted.boneMass.slice(0, -1);
         }
