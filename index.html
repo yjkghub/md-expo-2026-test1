@@ -375,7 +375,7 @@
       });
     }
 
-    // ROBUST 15-METRIC STREAM PARSER WITH 'CAL' ANCHORED METABOLIC AGE EXTRACTION
+    // ROBUST 15-METRIC STREAM PARSER WITH DIRECT 'CAL' MATCHING
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -443,29 +443,18 @@
           }
         }
 
-        // Specifically target Metabolic Age: look for a number immediately following "cal" in the text lines
+        // Direct 'cal' and full text search for Metabolic Age
         let metabolicAgeVal = "";
-        for (let i = 0; i < lines.length; i++) {
-          let lowerLine = lines[i].toLowerCase();
-          if (lowerLine.includes("cal")) {
-            // Find numbers in this line or the next line
-            let numsInLine = lines[i].match(/(\d+)/g);
-            if (numsInLine && numsInLine.length >= 2) {
-              // Usually [BMR, MetabolicAge] if both appear on the same line (e.g. "1244 (cal 71")
-              metabolicAgeVal = numsInLine[numsInLine.length - 1];
-              break;
-            } else if (i + 1 < lines.length) {
-              let numsNextLine = lines[i + 1].match(/(\d+)/g);
-              if (numsNextLine && numsNextLine.length > 0) {
-                metabolicAgeVal = numsNextLine[0];
-                break;
-              }
-            }
-          }
+        
+        // 1. Search full text for pattern: "cal" followed by whitespace/symbols and a number
+        const calMatch = cleanedText.match(/cal\D+(\d+)/i);
+        if (calMatch && calMatch[1]) {
+          metabolicAgeVal = calMatch[1];
         }
 
-        // Fallback: if not found via 'cal', check index 14 or last number
+        // 2. If not found, look for numbers immediately following BMR in the extracted numbers array or string stream
         if (!metabolicAgeVal) {
+          // BMR is typically index 13. If there's a 15th number, take it.
           if (allNumbers.length >= 15) {
             metabolicAgeVal = allNumbers[14];
           } else if (allNumbers.length > 0) {
