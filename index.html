@@ -375,7 +375,7 @@
       });
     }
 
-    // ROBUST 15-METRIC STREAM PARSER WITHOUT ARBITRARY RANGES
+    // ROBUST 15-METRIC STREAM PARSER WITH 'CAL' ANCHORED METABOLIC AGE EXTRACTION
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -443,23 +443,32 @@
           }
         }
 
-        // Directly capture Metabolic Age: look for a standalone integer appearing right after BMR / kcal or near the end of the array
+        // Specifically target Metabolic Age: look for a number immediately following "cal" in the text lines
         let metabolicAgeVal = "";
-        if (allNumbers.length >= 15) {
-          metabolicAgeVal = allNumbers[14];
-        } else {
-          // Fallback: search specifically near lines containing metabolic/age keywords or take the very last number
-          for (let i = lines.length - 1; i >= 0; i--) {
-            let lowerLine = lines[i].toLowerCase();
-            if (lowerLine.includes("metabolic") || lowerLine.includes("age")) {
-              let numsInLine = lines[i].match(/(\d+)/g);
-              if (numsInLine && numsInLine.length > 0) {
-                metabolicAgeVal = numsInLine[numsInLine.length - 1];
+        for (let i = 0; i < lines.length; i++) {
+          let lowerLine = lines[i].toLowerCase();
+          if (lowerLine.includes("cal")) {
+            // Find numbers in this line or the next line
+            let numsInLine = lines[i].match(/(\d+)/g);
+            if (numsInLine && numsInLine.length >= 2) {
+              // Usually [BMR, MetabolicAge] if both appear on the same line (e.g. "1244 (cal 71")
+              metabolicAgeVal = numsInLine[numsInLine.length - 1];
+              break;
+            } else if (i + 1 < lines.length) {
+              let numsNextLine = lines[i + 1].match(/(\d+)/g);
+              if (numsNextLine && numsNextLine.length > 0) {
+                metabolicAgeVal = numsNextLine[0];
                 break;
               }
             }
           }
-          if (!metabolicAgeVal && allNumbers.length > 0) {
+        }
+
+        // Fallback: if not found via 'cal', check index 14 or last number
+        if (!metabolicAgeVal) {
+          if (allNumbers.length >= 15) {
+            metabolicAgeVal = allNumbers[14];
+          } else if (allNumbers.length > 0) {
             metabolicAgeVal = allNumbers[allNumbers.length - 1];
           }
         }
