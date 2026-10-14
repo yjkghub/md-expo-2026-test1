@@ -1,6 +1,3 @@
-Here is the complete, full code incorporating the cleanly separated parsing blocks for both returning users and first-time users, ensuring neither case regresses:
-
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -359,7 +356,7 @@ Here is the complete, full code incorporating the cleanly separated parsing bloc
       });
     }
 
-    // SEPARATE CASE-BASED OCR PARSER (RETURNING USERS VS. NEW USERS)
+    // ROBUST BULLETPROOF PARSER FOR BOTH RETURNING & NEW USERS[cite: 3]
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -383,7 +380,7 @@ Here is the complete, full code incorporating the cleanly separated parsing bloc
         let allNumbers = [];
 
         // ==========================================
-        // CASE 1: RETURNING USER PARSING BLOCK
+        // 1. RETURNING / OLD USER PARSING BLOCK
         // ==========================================
         if (isReturningUser) {
           let startIndex = dateIndices[dateIndices.length - 1] + 1;
@@ -403,18 +400,28 @@ Here is the complete, full code incorporating the cleanly separated parsing bloc
               });
             }
           }
-          if (allNumbers.length > 0 && allNumbers[0] === "4" && allNumbers[1] === "144.6") {
+
+          // Strip out erroneous leading prefix token ("4" or small integers before weight)[cite: 3]
+          if (allNumbers.length > 0 && allNumbers[0] === "4" && parseFloat(allNumbers[1]) > 50) {
             allNumbers.shift();
-          } else if (allNumbers.length > 0 && parseFloat(allNumbers[0]) < 50 && !allNumbers[0].includes(".") && allNumbers.length > 1 && parseFloat(allNumbers[1]) > 100) {
+          } else if (allNumbers.length > 0 && parseFloat(allNumbers[0]) < 50 && !allNumbers[0].includes(".") && allNumbers.length > 1 && parseFloat(allNumbers[1]) > 50) {
             allNumbers.shift();
           }
         } 
         // ==========================================
-        // CASE 2: FIRST-TIME (NEW) USER PARSING BLOCK
+        // 2. FIRST-TIME (NEW) USER PARSING BLOCK
         // ==========================================
         else {
-          let dateIndex = dateIndices.length === 1 ? dateIndices[0] : -1;
-          let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
+          let weightIndices = [];
+          for (let i = 0; i < lines.length; i++) {
+            let lower = lines[i].toLowerCase();
+            if (lower.includes("weight") && !lower.includes("ideal") && !lower.includes("control")) {
+              weightIndices.push(i);
+            }
+          }
+          let targetWeightIndex = weightIndices.length > 0 ? weightIndices[weightIndices.length - 1] : -1;
+          let startIndex = targetWeightIndex >= 0 ? targetWeightIndex : (dateIndices.length === 1 ? dateIndices[0] + 1 : 0);
+
           for (let i = startIndex; i < lines.length; i++) {
             let line = lines[i];
             let lower = line.toLowerCase();
@@ -467,7 +474,7 @@ Here is the complete, full code incorporating the cleanly separated parsing bloc
           visceral: formatVal(allNumbers[5], true),
           bodyWater: formatVal(allNumbers[6], false),
           skeletalMuscle: formatVal(allNumbers[7], false),
-          muscleMass: formatVal(allNumbers[8], true),
+          muscleMass: formatVal(allNumbers[8], false),
           musclePercent: formatVal(allNumbers[9], false),
           boneMass: formatVal(allNumbers[10], false),
           bonePercent: formatVal(allNumbers[11], false),
@@ -936,5 +943,3 @@ Here is the complete, full code incorporating the cleanly separated parsing bloc
   </script>
 </body>
 </html>
-
-```
