@@ -375,7 +375,7 @@
       });
     }
 
-    // ROBUST PARSER: HANDLES BOTH FIRST-TIMERS (START AT 0, IGNORING STRAY HEADER FRAGMENTS) & RETURNING VISITORS
+    // UNIFIED PARSER: PROPERLY HANDLES BOTH FIRST-TIMERS AND RETURNING VISITORS
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -402,13 +402,13 @@
         });
 
         // Determine parsing start index:
-        // - If 2+ date stamps exist, skip past the historical block to the second date stamp.
-        // - If 1 or 0 date stamps exist (first-timer), start from index 0.
+        // - Returning visitor (2+ date stamps): skip past historical block to second date stamp.
+        // - First-timer (1 date stamp): skip past the top date/header stamp (dateTimeIndices[0] + 1) to land directly on weight.
         let parseStartIndex = 0;
         if (dateTimeIndices.length >= 2) {
           parseStartIndex = dateTimeIndices[1] + 1;
-        } else {
-          parseStartIndex = 0;
+        } else if (dateTimeIndices.length === 1) {
+          parseStartIndex = dateTimeIndices[0] + 1;
         }
 
         let allNumbers = [];
@@ -424,10 +424,6 @@
           if (matches) {
             matches.forEach(m => {
               let num = parseFloat(m);
-              // For first-timers, ignore tiny stray header fragments (< 30) before weight (like IDs/ages/dates)
-              if (dateTimeIndices.length < 2 && parseStartIndex === 0 && allNumbers.length === 0 && num < 30) {
-                return;
-              }
               if (m !== "2025" && m !== "2026" && num < 5000) {
                 allNumbers.push(m);
               }
