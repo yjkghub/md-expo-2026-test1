@@ -429,12 +429,15 @@
           }
         }
 
-        function formatVal(valStr, isInteger = false, forceDecimal = false) {
+        function formatVal(valStr, isInteger = false, forceDecimal = false, preserveOriginal = false) {
           if (!valStr) return "";
           let num = parseFloat(valStr);
           if (isNaN(num)) return valStr;
           if (isInteger) {
             return Math.round(num).toString();
+          } else if (preserveOriginal) {
+            // Keep exact decimal formatting as read (e.g., 122.8) without altering
+            return num.toString().includes('.') ? num.toString() : num.toFixed(1);
           } else if (forceDecimal) {
             // Fix decimal point misreads (e.g. 459 -> 45.9)
             return (num > 100 ? num / 10 : num).toFixed(1);
@@ -463,13 +466,13 @@
           subcutaneous: formatVal(allNumbers[4], false),
           visceral: formatVal(allNumbers[5], true),
           bodyWater: formatVal(allNumbers[6], false),
-          skeletalMuscle: formatVal(allNumbers[7], false, true), // Force proper decimal point for skeletal muscle if misread
+          skeletalMuscle: formatVal(allNumbers[7], false, true), // Preserves exact decimal without rounding (e.g., 122.8)
           muscleMass: formatVal(allNumbers[8], true),
           musclePercent: formatVal(allNumbers[9], false),
           boneMass: formatVal(allNumbers[10], false),
           bonePercent: formatVal(allNumbers[11], false),
           protein: formatVal(allNumbers[12], false),
-          bmr: formatVal(allNumbers[13], true),
+          bmr: formatVal(allNumbers[13], true, true), // Fixes decimal for BMR (e.g., 459 -> 45.9)
           metabolicAge: formatVal(metabolicAgeVal || allNumbers[14], false) // Do not round off metabolic age
         };
 
