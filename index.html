@@ -240,7 +240,6 @@
       background: #fff;
     }
 
-    /* PERSISTENT DEBUG DISPLAY */
     #status {
       margin-top: 15px;
       padding: 15px;
@@ -249,11 +248,11 @@
       white-space: pre-wrap; 
       display: block;
       font-size: 13px;
-      max-height: 300px;
+      max-height: 250px;
       overflow-y: auto;
       font-family: monospace;
       background: #2d3748;
-      color: #718096;
+      color: #63b3ed;
       border: 2px solid #4a5568;
     }
     .status-success { background: #1a202c !important; color: #48bb78 !important; border-color: #38a169 !important; }
@@ -311,11 +310,562 @@
     </div>
 
     <!-- STATUS DISPLAY BOX -->
-    <div id="status" class="no-print">System Status: Ready. Upload screenshot to extract raw text...</div>
+    <div id="status" class="no-print">System Status: Ready. Upload screenshot to extract data...</div>
   </div>
 
   <!-- METRICS CONTAINER -->
   <div id="metrics-container"></div>
 
   <script>
-    const API_URL = "
+    const API_URL = "https://script.google.com/macros/s/AKfycby-oTR693t5Y36logsSb0Yau3nPmPWmWO9KyHyFkZCRVANESwVKi8A5XuhrJ5HctdOS/exec"; 
+    let formStructure = [];
+    let allVisitors = [];
+
+    function checkPassword() {
+      const pwd = document.getElementById("password-input").value;
+      if (pwd === "Expo2026") {
+        document.getElementById("auth-overlay").style.display = "none";
+        initApp();
+      } else {
+        document.getElementById("auth-error").style.display = "block";
+      }
+    }
+
+    // BULLETPROOF ISOLATED PARSER
+    async function processInBodyImage(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      showStatus("⏳ OCR Active: Scanning image...", "loading");
+
+      try {
+        const { data: { text } } = await Tesseract.recognize(file, 'eng');
+        
+        showStatus("=== RAW OCR TEXT ===\n" + text, "success");
+
+        const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+        // Helper to find a specific standalone decimal/number near a keyword
+        function getVal(keywordList) {
+          for (let i = 0; i < lines.length; i++) {
+            let l = lines[i].toLowerCase();
+            for (let kw of keywordList) {
+              if (l.includes(kw)) {
+                // Check current line for numbers
+                let m = lines[i].match(/(\d+\.\d+|\d+)/g);
+                if (m) {
+                  let filtered = m.filter(num => num !== kw && parseFloat(num) < 1000);
+                  if (filtered.length > 0) return filtered[filtered.length - 1];
+                }
+                // Check line above
+                if (i > 0) {
+                  let pm = lines[i - 1].match(/(\d+\.\d+|\d+)/g);
+                  if (pm) return pm[pm.length - 1];
+                }
+              }
+            }
+          }
+          return "";
+        }
+
+        // Map each metric explicitly to avoid overlapping indices
+        const mapping = {
+          6: getVal(['weight']),
+          7: getVal(['bmi']),
+          8: getVal(['body fat', 'fat (%)', 'fat']),
+          9: getVal(['fat-free', 'fat free', 'ffw']),
+          10: getVal(['subcutaneous']),
+          11: getVal(['visceral']),
+          12: getVal(['body water', 'water']),
+          13: getVal(['skeletal muscle']),
+          14: getVal(['muscle mass']),
+          15: getVal(['muscle percentage', 'muscle %']),
+          16: getVal(['bone mass']),
+          17: getVal(['bone percent', 'bone %']),
+          18: getVal(['protein']),
+          19: getVal(['bmr', 'kcal']),
+          20: getVal(['metabolic age', 'metabolic'])
+        };
+
+        // Populate fields safely
+        for (let rowIndex in mapping) {
+          let val = mapping[rowIndex];
+          if (val) {
+            const input = document.getElementById("row_" + rowIndex);
+            if (input) {
+              input.value = val;
+              input.dispatchEvent(new Event('input'));
+            }
+          }
+        }
+
+      } catch (err) {
+        showStatus("OCR Error: " + err.message, "error");
+      }
+
+      event.target.value = ""; 
+    }
+
+    function triggerPrint() {
+      document.querySelectorAll("#metrics-container input").forEach(input => {
+        input.setAttribute('value', input.value);
+      });
+
+      const visitorSelect = document.getElementById("visitor-select");
+      const selectedOptionText = visitorSelect.options[visitorSelect.selectedIndex] ? visitorSelect.options[visitorSelect.selectedIndex].text : "Visitor";
+      
+      let visitorSerial = "000";
+      const snInput = document.getElementById("row_2");
+      if (snInput && snInput.value.trim() !== "") {
+        let rawSn = snInput.value.trim().replace(/^SN\s*/i, "");
+        if (!isNaN(rawSn) && rawSn !== "") {
+          visitorSerial = String(rawSn).padStart(3, '0');
+        }
+      } else if (visitorSelect.value && visitorSelect.value !== "new") {
+        visitorSerial = String(visitorSelect.value).padStart(3, '0');
+      }
+      
+      const cleanVisitorName = selectedOptionText.split('-')[0].trim().replace(/[^a-zA-Z0-9가-힣]/g, "_");
+      const rawFilename = `${visitorSerial}_${cleanVisitorName}_MD_Expo_2026_Health_Report.pdf`;
+      const pdfFilename = rawFilename.replace(/_+/g, "_");
+
+      const logoImg = document.querySelector('.brand-logo-img');
+      let logoHtmlTag = '';
+      if (logoImg && logoImg.complete && logoImg.naturalWidth !== 0) {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = logoImg.naturalWidth;
+          canvas.height = logoImg.naturalHeight;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(logoImg, 0, 0);
+          logoHtmlTag = `<img src="${canvas.toDataURL('image/png')}" style="max-height: 40px; max-width: 100px; width: auto; height: auto; object-fit: contain; justify-self: end;">`;
+        } catch (e) {}
+      }
+
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert("Popup blocked! Please allow popups for this site to print.");
+        return;
+      }
+
+      printWindow.document.open();
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>${pdfFilename}</title>
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: white; padding: 10px; margin: 0; color: #000; font-size: 12pt; }
+            @page { size: letter portrait; margin: 4mm; }
+            .print-header { display: grid !important; grid-template-columns: 1fr auto !important; align-items: center !important; border-bottom: 2px solid #1a5276; padding-bottom: 5px; margin-bottom: 6px; width: 100%; box-sizing: border-box; }
+            .brand-text-area { text-align: center; width: 100%; }
+            .print-main-title { font-size: 16pt; font-weight: bold; color: #1a5276; line-height: 1.0; }
+            .print-sub-line { font-size: 9.5pt; color: #333; margin-top: 1px; line-height: 1.0; }
+            .print-club-line { font-size: 9.5pt; font-weight: bold; color: #1a5276; margin-top: 1px; line-height: 1.0; }
+            .print-email-line { font-size: 9pt; color: #555; margin-top: 1px; line-height: 1.0; }
+            #metrics-container { display: flex; flex-direction: column; gap: 2px; margin-bottom: 3px; }
+            .booth-section { margin-bottom: 2px; page-break-inside: avoid; }
+            .booth-header { font-size: 11.5pt; font-weight: bold; color: #1a5276 !important; border-bottom: 1px solid #1a5276; padding-bottom: 1px; margin-bottom: 1px; margin-top: 1px; }
+            .booth-grid { display: grid !important; grid-template-columns: repeat(2, 1fr) !important; gap: 1px 8px !important; }
+            .form-group { border-bottom: 1px dotted #ccc !important; padding: 1px 0 !important; display: flex; flex-direction: row; justify-content: space-between; align-items: center; }
+            .label-row { margin-bottom: 0; width: 100%; }
+            .form-group label { font-size: 11.5pt; font-weight: normal; color: #000; line-height: 1.0; }
+            .form-group input { border: none !important; background: transparent !important; text-align: right; font-weight: bold; font-size: 12.5pt; width: 35% !important; padding: 0; }
+            .recorded-badge { display: none !important; }
+          </style>
+        </head>
+        <body>
+          <div class="print-header">
+            <div class="brand-text-area">
+              <div class="print-main-title">MD Expo 2026 Health Data Report</div>
+              <div class="print-sub-line">Printed on: ${new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</div>
+              <div class="print-club-line">Back-To-Eden Wellness Club</div>
+              <div class="print-club-line">백투에덴 건강 동우회</div>
+              <div class="print-email-line">b2e.wsk.church | b2ewellness@gmail.com</div>
+            </div>
+            ${logoHtmlTag}
+          </div>
+          <div id="metrics-container">
+            ${document.getElementById('metrics-container').innerHTML}
+          </div>
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 400);
+            };
+          <\/script>
+        </body>
+        </html>
+      `);
+      printWindow.document.close();
+    }
+
+    function saveData() {
+      const select = document.getElementById("visitor-select");
+      const colIndex = select.value;
+      
+      if (!colIndex) {
+        alert("Please select a visitor or choose '+ Add New Visitor' from the dropdown.");
+        return;
+      }
+
+      const snInput = document.getElementById("row_2");
+      const nameInput = document.getElementById("row_3");
+
+      if (!snInput || snInput.value.trim() === "") {
+        alert("Safety Check: Serial Number cannot be empty!");
+        if (snInput) snInput.focus();
+        return;
+      }
+
+      if (!nameInput || nameInput.value.trim() === "") {
+        alert("Safety Check: Visitor Name cannot be empty!");
+        if (nameInput) nameInput.focus();
+        return;
+      }
+
+      const rawSn = snInput.value.trim().replace(/^SN\s*/i, "");
+      const paddedSn = !isNaN(rawSn) && rawSn !== "" ? String(rawSn).padStart(3, '0') : rawSn;
+      const visitorName = nameInput.value.trim();
+
+      const values = {};
+      document.querySelectorAll("#metrics-container input").forEach(input => {
+        values[input.dataset.rowIndex] = input.value;
+      });
+
+      showStatus("Saving data to spreadsheet...", "loading");
+      document.getElementById("save-btn").disabled = true;
+
+      fetchAPI({ 
+        action: "saveVisitorData", 
+        payload: { colIndex: colIndex === "new" ? "new" : colIndex, visitorName: visitorName, values: values } 
+      }, function(res) {
+        showStatus(res.data.message || res.message, "success");
+        document.getElementById("save-btn").disabled = false;
+        
+        const newColIndex = res.data.colIndex;
+        const displayLabel = `${visitorName} - ${paddedSn}`;
+
+        let existingOpt = select.querySelector(`option[value="${newColIndex}"]`);
+        if (existingOpt) {
+          existingOpt.text = displayLabel;
+        } else {
+          let opt = document.createElement("option");
+          opt.value = newColIndex;
+          opt.text = displayLabel;
+          select.appendChild(opt);
+        }
+
+        select.value = newColIndex;
+        document.getElementById("visitor-search").value = "";
+
+        fetchAPI({ action: "getVisitorList" }, function(listRes) {
+          allVisitors = listRes.data;
+          populateDropdown(allVisitors);
+          select.value = newColIndex;
+        });
+
+      });
+    }
+
+    function saveToDrivePrompt() {
+      const adminPwd = prompt("🔒 Enter Admin Password to save reports to Google Drive:");
+      if (adminPwd !== "ExpoAdmin2026") {
+        if (adminPwd !== null) alert("Incorrect admin password.");
+        return;
+      }
+      executeDriveSave();
+    }
+
+    function executeDriveSave() {
+      const select = document.getElementById("visitor-select");
+      const colIndex = select.value;
+      
+      if (!colIndex || colIndex === "new") {
+        alert("Please select an existing saved visitor to archive reports to Drive.");
+        return;
+      }
+
+      const snInput = document.getElementById("row_2");
+      if (!snInput || snInput.value.trim() === "") {
+        alert("Serial Number is required for file naming.");
+        return;
+      }
+
+      let visitorSerial = String(snInput.value.trim().replace(/^SN\s*/i, "")).padStart(3, '0');
+      const visitorSelect = document.getElementById("visitor-select");
+      let selectedOptionText = visitorSelect.options[visitorSelect.selectedIndex].text;
+      const cleanVisitorName = selectedOptionText.split('-')[0].trim().replace(/[^a-zA-Z0-9가-힣]/g, "_");
+      const pdfFilename = `${visitorSerial}_${cleanVisitorName}_MD_Expo_2026_Health_Report.pdf`.replace(/_+/g, "_");
+
+      const values = {};
+      document.querySelectorAll("#metrics-container input").forEach(input => {
+        values[input.dataset.rowIndex] = input.value;
+        input.setAttribute('value', input.value);
+      });
+
+      showStatus("Archiving reports (Text + PDF) to Google Drive...", "loading");
+      document.getElementById("drive-btn").disabled = true;
+
+      const logoImg = document.querySelector('.brand-logo-img');
+      
+      function sendDrivePayload(logoDataUrl) {
+        const logoHtmlTag = logoDataUrl ? `<img src="${logoDataUrl}" style="max-height: 40px; max-width: 100px; width: auto; height: auto; object-fit: contain; justify-self: end;">` : '';
+
+        const htmlPayload = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <style>
+              body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: white; padding: 0; margin: 0; color: #000; font-size: 12pt; }
+              @page { size: letter portrait; margin: 4mm; }
+              .print-header { display: grid !important; grid-template-columns: 1fr auto !important; align-items: center !important; border-bottom: 2px solid #1a5276; padding-bottom: 5px; margin-bottom: 6px; width: 100%; box-sizing: border-box; }
+              .brand-text-area { text-align: center; width: 100%; }
+              .print-main-title { font-size: 16pt; font-weight: bold; color: #1a5276; line-height: 1.0; }
+              .print-sub-line { font-size: 9.5pt; color: #333; margin-top: 1px; line-height: 1.0; }
+              .print-club-line { font-size: 9.5pt; font-weight: bold; color: #1a5276; margin-top: 1px; line-height: 1.0; }
+              .print-email-line { font-size: 9pt; color: #555; margin-top: 1px; line-height: 1.0; }
+              #metrics-container { display: flex; flex-direction: column; gap: 2px; margin-bottom: 3px; }
+              .booth-section { margin-bottom: 2px; page-break-inside: avoid; }
+              .booth-header { font-size: 11.5pt; font-weight: bold; color: #1a5276 !important; border-bottom: 1px solid #1a5276; padding-bottom: 1px; margin-bottom: 1px; margin-top: 1px; }
+              .booth-grid { display: grid !important; grid-template-columns: repeat(2, 1fr) !important; gap: 1px 8px !important; }
+              .form-group { border-bottom: 1px dotted #ccc !important; padding: 1px 0 !important; display: flex; flex-direction: row; justify-content: space-between; align-items: center; }
+              .label-row { margin-bottom: 0; width: 100%; }
+              .form-group label { font-size: 11.5pt; font-weight: normal; color: #000; line-height: 1.0; }
+              .form-group input { border: none !important; background: transparent !important; text-align: right; font-weight: bold; font-size: 12.5pt; width: 35% !important; padding: 0; }
+              .recorded-badge { display: none !important; }
+            </style>
+          </head>
+          <body>
+            <div class="print-header">
+              <div class="brand-text-area">
+                <div class="print-main-title">MD Expo 2026 Health Data Report</div>
+                <div class="print-sub-line">Archived on: ${new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</div>
+                <div class="print-club-line">Back-To-Eden Wellness Club</div>
+                <div class="print-club-line">백투에덴 건강 동우회</div>
+                <div class="print-email-line">b2e.wsk.church | b2ewellness@gmail.com</div>
+              </div>
+              ${logoHtmlTag}
+            </div>
+            <div id="metrics-container">
+              ${document.getElementById('metrics-container').innerHTML}
+            </div>
+          </body>
+          </html>
+        `;
+
+        fetchAPI({
+          action: "saveDriveReports",
+          payload: { htmlContent: htmlPayload, filename: pdfFilename, sn: visitorSerial, name: cleanVisitorName, values: values }
+        }, function(res) {
+          showStatus("✅ Reports successfully archived to Google Drive!", "success");
+          document.getElementById("drive-btn").disabled = false;
+        });
+      }
+
+      if (logoImg && logoImg.complete && logoImg.naturalWidth !== 0) {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = logoImg.naturalWidth;
+          canvas.height = logoImg.naturalHeight;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(logoImg, 0, 0);
+          sendDrivePayload(canvas.toDataURL('image/png'));
+        } catch (e) {
+          sendDrivePayload('');
+        }
+      } else {
+        sendDrivePayload('');
+      }
+    }
+
+    function initApp() {
+      showStatus("Loading system...", "loading");
+      fetchAPI({ action: "getFormStructure" }, function(res) {
+        formStructure = res.data;
+        buildForm();
+        loadVisitorDropdown();
+      });
+    }
+
+    function loadVisitorDropdown() {
+      fetchAPI({ action: "getVisitorList" }, function(res) {
+        allVisitors = res.data;
+        populateDropdown(allVisitors);
+      });
+    }
+
+    function populateDropdown(visitors) {
+      const select = document.getElementById("visitor-select");
+      const currentValue = select.value;
+      select.options.length = 2; 
+      
+      visitors.forEach(v => {
+        let opt = document.createElement("option");
+        opt.value = v.colIndex;
+        opt.text = v.label;
+        select.appendChild(opt);
+      });
+      select.value = currentValue;
+    }
+
+    function filterVisitorDropdown() {
+      const query = document.getElementById("visitor-search").value.toLowerCase();
+      const filtered = allVisitors.filter(v => v.label.toLowerCase().includes(query));
+      populateDropdown(filtered);
+    }
+
+    function handleVisitorChange() {
+      const select = document.getElementById("visitor-select");
+      if (select.value === "new") {
+        clearForm();
+        showStatus("Generating next serial number...", "loading");
+        fetchAPI({ action: "getNextAvailableSerial" }, function(res) {
+          const snInput = document.getElementById("row_2");
+          if (snInput) {
+            snInput.value = res.data;
+            snInput.dispatchEvent(new Event('input'));
+          }
+          const nameInput = document.getElementById("row_3");
+          if (nameInput) nameInput.focus();
+        });
+      } else {
+        if (select.value) loadVisitorData();
+      }
+    }
+
+    function buildForm() {
+      const container = document.getElementById("metrics-container");
+      container.innerHTML = "";
+      
+      const groups = {};
+      let lastBooth = "General Information";
+
+      formStructure.forEach((metric, index) => {
+        let displayIdx = index + 1;
+        
+        if (metric.booth && metric.booth.toString().trim() !== "") {
+          let bVal = metric.booth.toString().trim();
+          lastBooth = bVal.toLowerCase().includes("booth") || bVal.toLowerCase().includes("general") ? bVal : "Booth " + bVal;
+        }
+        
+        if (!groups[lastBooth]) groups[lastBooth] = [];
+        groups[lastBooth].push({ ...metric, displayIndex: displayIdx });
+      });
+
+      for (const [booth, metrics] of Object.entries(groups)) {
+        const section = document.createElement("div");
+        section.className = "booth-section";
+        
+        const header = document.createElement("h3");
+        header.className = "booth-header";
+        header.innerText = booth;
+        section.appendChild(header);
+
+        const grid = document.createElement("div");
+        grid.className = "booth-grid";
+        
+        metrics.forEach(metric => {
+          const div = document.createElement("div");
+          div.className = "form-group";
+          
+          const labelRow = document.createElement("div");
+          labelRow.className = "label-row";
+          
+          const label = document.createElement("label");
+          label.innerText = `${metric.displayIndex} - ${metric.name}` + (metric.device ? ` (${metric.device})` : "");
+          
+          const badge = document.createElement("span");
+          badge.className = "recorded-badge";
+          badge.id = "badge_" + metric.rowIndex;
+          badge.innerText = "✓ Recorded";
+          
+          labelRow.appendChild(label);
+          labelRow.appendChild(badge);
+          
+          const input = document.createElement("input");
+          input.type = "text";
+          input.id = "row_" + metric.rowIndex;
+          input.dataset.rowIndex = metric.rowIndex;
+          input.oninput = function() { checkInputRecorded(this, metric.rowIndex); };
+          
+          div.appendChild(labelRow);
+          div.appendChild(input);
+          grid.appendChild(div);
+        });
+        
+        section.appendChild(grid);
+        container.appendChild(section);
+      }
+    }
+
+    function checkInputRecorded(inputElement, rowIndex) {
+      const badge = document.getElementById("badge_" + rowIndex);
+      if (inputElement.value.trim() !== "") {
+        badge.style.display = "inline-block";
+      } else {
+        badge.style.display = "none";
+      }
+    }
+
+    function clearForm() {
+      document.querySelectorAll("#metrics-container input").forEach(input => {
+        input.value = "";
+        input.dispatchEvent(new Event('input'));
+      });
+    }
+
+    function loadVisitorData() {
+      const colIndex = document.getElementById("visitor-select").value;
+      if (!colIndex || colIndex === "new") return;
+
+      showStatus("Loading visitor data...", "loading");
+      fetchAPI({ action: "getVisitorData", payload: { colIndex: colIndex } }, function(res) {
+        clearForm();
+        for (let rowIndex in res.data) {
+          let input = document.getElementById("row_" + rowIndex);
+          if (input) {
+            input.value = res.data[rowIndex];
+            input.dispatchEvent(new Event('input'));
+          }
+        }
+        showStatus("Data loaded successfully.", "success");
+      });
+    }
+
+    function fetchAPI(data, onSuccess) {
+      fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(data)
+      })
+      .then(response => response.json())
+      .then(res => {
+        if (res.status === "success") onSuccess(res);
+        else {
+          showStatus("Error: " + res.message, "error");
+          document.getElementById("save-btn").disabled = false;
+          document.getElementById("drive-btn").disabled = false;
+        }
+      })
+      .catch(err => {
+        showStatus("Network Error: " + err.message, "error");
+        document.getElementById("save-btn").disabled = false;
+        document.getElementById("drive-btn").disabled = false;
+      });
+    }
+
+    function showStatus(message, type) {
+      const statusDiv = document.getElementById("status");
+      if (statusDiv) {
+        statusDiv.style.display = "block";
+        statusDiv.className = "status-" + (type || "success");
+        statusDiv.innerText = message;
+      }
+    }
+  </script>
+</body>
+</html>
