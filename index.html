@@ -325,7 +325,7 @@
       }
     }
 
-    // RESTORED STABLE WORKING PARSER WITH TARGETED FIXES FOR #11, #16, AND #20
+    // STABLE OCR PARSING WITH FULL FIELD SUPPORT
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -341,20 +341,20 @@
 
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        function findValueAfterKeyword(keywords) {
+        function extractValue(keywords) {
           for (let i = 0; i < lines.length; i++) {
             let lineLower = lines[i].toLowerCase();
             for (let kw of keywords) {
               if (lineLower.includes(kw)) {
-                let match = lines[i].match(/([0-9]+\.?[0-9]*)/);
+                let match = lines[i].match(/(\d+\.?\d*)/);
                 if (match && !lineLower.includes(match[1])) return match[1];
-                if (i + 1 < lines.length) {
-                  let nextMatch = lines[i + 1].match(/([0-9]+\.?[0-9]*)/);
-                  if (nextMatch) return nextMatch[1];
-                }
                 if (i > 0) {
-                  let prevMatch = lines[i - 1].match(/([0-9]+\.?[0-9]*)/);
+                  let prevMatch = lines[i - 1].match(/(\d+\.?\d*)/);
                   if (prevMatch) return prevMatch[1];
+                }
+                if (i + 1 < lines.length) {
+                  let nextMatch = lines[i + 1].match(/(\d+\.?\d*)/);
+                  if (nextMatch) return nextMatch[1];
                 }
               }
             }
@@ -363,24 +363,24 @@
         }
 
         const extracted = {
-          weight: findValueAfterKeyword(['weight', '144.6']) || findValueAfterKeyword(['lb']),
-          bmi: findValueAfterKeyword(['bmi']),
-          bodyFat: findValueAfterKeyword(['body fat', 'bodyfat', 'fat %']),
-          ffw: findValueAfterKeyword(['fat-free', 'fat free', 'fat-free body weight']),
-          subcutaneous: findValueAfterKeyword(['subcutaneous']),
-          visceral: findValueAfterKeyword(['visceral']), // Fixed #11
-          bodyWater: findValueAfterKeyword(['body water', 'water']),
-          skeletalMuscle: findValueAfterKeyword(['skeletal muscle']),
-          muscleMass: findValueAfterKeyword(['muscle mass']),
-          musclePercent: findValueAfterKeyword(['muscle percentage', 'muscle %']),
-          boneMass: findValueAfterKeyword(['bone mass']),
-          bonePercent: findValueAfterKeyword(['bone percent', 'bone %']),
-          protein: findValueAfterKeyword(['protein']),
-          bmr: findValueAfterKeyword(['bmr', 'kcal']),
-          metabolicAge: findValueAfterKeyword(['metabolic age', 'metabolic']) // Fixed #20
+          weight: extractValue(['weight', '144.6']) || extractValue(['lb']),
+          bmi: extractValue(['bmi']),
+          bodyFat: extractValue(['body fat', 'bodyfat', 'fat %']),
+          ffw: extractValue(['fat-free', 'fat free', 'fat-free body weight']),
+          subcutaneous: extractValue(['subcutaneous']),
+          visceral: extractValue(['visceral']),
+          bodyWater: extractValue(['body water', 'water']),
+          skeletalMuscle: extractValue(['skeletal muscle']),
+          muscleMass: extractValue(['muscle mass']),
+          musclePercent: extractValue(['muscle percentage', 'muscle %']),
+          boneMass: extractValue(['bone mass']),
+          bonePercent: extractValue(['bone percent', 'bone %']),
+          protein: extractValue(['protein']),
+          bmr: extractValue(['bmr', 'kcal']),
+          metabolicAge: extractValue(['metabolic age', 'metabolic'])
         };
 
-        // Fixed #16: Strip trailing '1' if captured from 'lb' (e.g., 5.41 -> 5.4)
+        // Clean Bone Mass trailing '1' artifact if present (e.g. 5.41 -> 5.4)
         if (extracted.boneMass && extracted.boneMass.length > 3 && extracted.boneMass.endsWith('1')) {
           extracted.boneMass = extracted.boneMass.slice(0, -1);
         }
