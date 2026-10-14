@@ -331,7 +331,7 @@
       }
     }
 
-    // ACCURATE RELATIVE PARSER
+    // ACCURATE PARSER WITH DEDICATED WEIGHT CAPTURE & STRICT BOOTH 13 FILTER
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -366,8 +366,28 @@
           return "";
         }
 
+        let weightVal = "";
+        for (let line of lines) {
+          if (line.toLowerCase().includes("weight") || line.toLowerCase().includes("lb")) {
+            let m = line.match(/(\d{2,3}\.\d|\d{2,3})/);
+            if (m && parseFloat(m[1]) > 30 && parseFloat(m[1]) < 500) {
+              weightVal = m[1];
+              break;
+            }
+          }
+        }
+        if (!weightVal) {
+          for (let line of lines) {
+            let m = line.match(/^(\d{2,3}\.\d)/);
+            if (m) {
+              weightVal = m[1];
+              break;
+            }
+          }
+        }
+
         const extracted = {
-          weight: extractValue(['weight', '144.6']) || extractValue(['lb']),
+          weight: weightVal || extractValue(['weight', 'lb']),
           bmi: extractValue(['bmi']),
           bodyFat: extractValue(['body fat', 'bodyfat', 'fat %']),
           ffw: extractValue(['fat-free', 'fat free', 'fat-free body weight']),
@@ -390,6 +410,11 @@
 
         formStructure.forEach(metric => {
           let nameLower = metric.name.toLowerCase();
+          let rowIndex = parseInt(metric.rowIndex);
+          
+          // STRICT FILTER: Only auto-fill Booth 13 metrics (Rows 6 to 20). Ignore Booth 9 completely!
+          if (rowIndex < 6 || rowIndex > 20) return;
+
           let valToSet = "";
 
           if (nameLower.includes("weight") && !nameLower.includes("fat")) valToSet = extracted.weight;
