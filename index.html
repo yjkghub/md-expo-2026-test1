@@ -339,7 +339,7 @@
       }
     }
 
-    // ROBUST OCR PARSER: EXTRACTS REAL NUMERICAL TOKENS STARTING FROM THE TOP
+    // ORIGINAL CLEAN SEQUENTIAL STREAM PARSER
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -353,61 +353,21 @@
 
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        // 1. Locate the date/time header line index
-        let dateIndex = -1;
-        for (let i = 0; i < lines.length; i++) {
-          let lower = lines[i].toLowerCase();
-          if (lower.includes("2025") || lower.includes("2026") || lower.includes("august") || lower.includes("pm") || lower.includes("am")) {
-            dateIndex = i;
-            break;
-          }
-        }
-
-        // 2. Extract visitor name from the line immediately above the date/time header
-        if (dateIndex > 0) {
-          let possibleNameLine = lines[dateIndex - 1];
-          if (possibleNameLine && !possibleNameLine.includes("|") && !possibleNameLine.includes("=") && !possibleNameLine.toLowerCase().includes("goal")) {
-            const nameInput = document.getElementById("row_3");
-            if (nameInput) {
-              nameInput.value = possibleNameLine;
-              nameInput.dispatchEvent(new Event('input'));
-            }
-          }
-        }
-
-        // 3. Scan the entire text or lines right after the date header for real data tokens
         let numbers = [];
-        
-        // Check for any standalone weight-like decimal pattern anywhere in the text first (e.g. 144.6)
-        let explicitWeight = "";
-        for (let line of lines) {
-          let wm = line.match(/(\d{2,3}\.\d)\s*(?:lb)?/i);
-          if (wm && parseFloat(wm[1]) >= 50 && parseFloat(wm[1]) <= 400) {
-            explicitWeight = wm[1] + "lb";
-            break;
-          }
-        }
-
-        // Collect all numerical tokens from lines starting at or after date header
-        let startIndex = dateIndex >= 0 ? dateIndex : 0;
-        for (let i = startIndex; i < lines.length; i++) {
-          let line = lines[i];
-          if (line.toLowerCase().includes("all data collected") || line.toLowerCase().includes("medical treatment")) continue;
-          
-          let matches = line.match(/(\d+\.?\d*)/g);
+        for (let i = 0; i < lines.length; i++) {
+          let matches = lines[i].match(/(\d+\.?\d*)/g);
           if (matches) {
             matches.forEach(m => {
               let num = parseFloat(m);
-              if (num < 1000 && m !== "2025" && m !== "2026" && m !== "14" && m !== "49" && m !== "16") {
+              if (num < 1000) {
                 numbers.push(m);
               }
             });
           }
         }
 
-        // Map extracted values safely
         const extracted = {
-          weight: explicitWeight || (numbers[0] ? numbers[0] + "lb" : ""),
+          weight: numbers[0] || "",
           bmi: numbers[1] || "",
           bodyFat: numbers[2] ? numbers[2] + "%" : "",
           ffw: numbers[3] ? numbers[3] + "lb" : "",
