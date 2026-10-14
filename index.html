@@ -356,7 +356,7 @@
       });
     }
 
-    // ROBUST MULTI-BLOCK PARSER FOR RETURNING USERS VS NEW USERS
+    // SEPARATE CASE-BASED OCR PARSER (RETURNING USERS VS. NEW USERS)
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -378,33 +378,6 @@
 
         const isReturningUser = dateIndices.length > 1;
         let allNumbers = [];
-
-        function formatVal(valStr, isInteger = false) {
-          if (!valStr) return "";
-          let num = parseFloat(valStr);
-          if (isNaN(num)) return valStr;
-          if (isInteger) {
-            return Math.round(num).toString();
-          } else {
-            return num.toFixed(1);
-          }
-        }
-
-        let metabolicAgeVal = "";
-        for (let i = 0; i < lines.length; i++) {
-          if (lines[i].toLowerCase().includes("cal")) {
-            let parts = lines[i].split(/cal/i);
-            if (parts.length > 1) {
-              let nums = parts[1].match(/(\d+)/g);
-              if (nums && nums.length > 0) {
-                metabolicAgeVal = nums[0];
-                break;
-              }
-            }
-          }
-        }
-
-        let extracted = {};
 
         // ==========================================
         // CASE 1: RETURNING USER PARSING BLOCK
@@ -432,45 +405,13 @@
           } else if (allNumbers.length > 0 && parseFloat(allNumbers[0]) < 50 && !allNumbers[0].includes(".") && allNumbers.length > 1 && parseFloat(allNumbers[1]) > 100) {
             allNumbers.shift();
           }
-
-          let rawBmr = allNumbers[13];
-          let bmrVal = rawBmr && !rawBmr.includes(".") && parseFloat(rawBmr) > 200 ? (parseFloat(rawBmr) / 10).toFixed(1) : formatVal(rawBmr, false);
-
-          let rawAge = metabolicAgeVal || allNumbers[14];
-          let ageVal = rawAge && !rawAge.includes(".") && parseFloat(rawAge) > 100 ? (parseFloat(rawAge) / 10).toFixed(1) : formatVal(rawAge, false);
-
-          extracted = {
-            weight: formatVal(allNumbers[0], false),
-            bmi: formatVal(allNumbers[1], false),
-            bodyFat: formatVal(allNumbers[2], false),
-            ffw: formatVal(allNumbers[3], false),
-            subcutaneous: formatVal(allNumbers[4], false),
-            visceral: formatVal(allNumbers[5], true),
-            bodyWater: formatVal(allNumbers[6], false),
-            skeletalMuscle: formatVal(allNumbers[7], false),
-            muscleMass: formatVal(allNumbers[8], true),
-            musclePercent: formatVal(allNumbers[9], false),
-            boneMass: formatVal(allNumbers[10], false),
-            bonePercent: formatVal(allNumbers[11], false),
-            protein: formatVal(allNumbers[12], false),
-            bmr: bmrVal,
-            metabolicAge: ageVal
-          };
         } 
         // ==========================================
-        // CASE 2: NEW USER PARSING BLOCK
+        // CASE 2: FIRST-TIME (NEW) USER PARSING BLOCK
         // ==========================================
         else {
-          let weightIndices = [];
-          for (let i = 0; i < lines.length; i++) {
-            let lower = lines[i].toLowerCase();
-            if (lower.includes("weight") && !lower.includes("ideal") && !lower.includes("control")) {
-              weightIndices.push(i);
-            }
-          }
-          let targetWeightIndex = weightIndices.length > 0 ? weightIndices[weightIndices.length - 1] : -1;
-          let startIndex = targetWeightIndex >= 0 ? targetWeightIndex : (dateIndices.length === 1 ? dateIndices[0] + 1 : 0);
-
+          let dateIndex = dateIndices.length === 1 ? dateIndices[0] : -1;
+          let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
           for (let i = startIndex; i < lines.length; i++) {
             let line = lines[i];
             let lower = line.toLowerCase();
@@ -487,25 +428,50 @@
               });
             }
           }
-
-          extracted = {
-            weight: formatVal(allNumbers[0], false),
-            bmi: formatVal(allNumbers[1], false),
-            bodyFat: formatVal(allNumbers[2], false),
-            ffw: formatVal(allNumbers[3], false),
-            subcutaneous: formatVal(allNumbers[4], false),
-            visceral: formatVal(allNumbers[5], true),
-            bodyWater: formatVal(allNumbers[6], false),
-            skeletalMuscle: formatVal(allNumbers[7], false),
-            muscleMass: formatVal(allNumbers[8], true),
-            musclePercent: formatVal(allNumbers[9], false),
-            boneMass: formatVal(allNumbers[10], false),
-            bonePercent: formatVal(allNumbers[11], false),
-            protein: formatVal(allNumbers[12], false),
-            bmr: formatVal(allNumbers[13], false),
-            metabolicAge: formatVal(metabolicAgeVal || allNumbers[14], false)
-          };
         }
+
+        function formatVal(valStr, isInteger = false) {
+          if (!valStr) return "";
+          let num = parseFloat(valStr);
+          if (isNaN(num)) return valStr;
+          if (isInteger) {
+            return Math.round(num).toString();
+          } else {
+            return num.toFixed(1);
+          }
+        }
+
+        let metabolicAgeVal = "";
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].toLowerCase().includes("cal")) {
+            let parts = lines[i].split(/cal/i);
+            if (parts.length > 1) {
+              let nums = parts[1].match(/(\d+)/g);
+              if (nums && nums.length > 0) {
+                metabolicAgeVal = nums[0];
+                break;
+              }
+            }
+          }
+        }
+
+        const extracted = {
+          weight: formatVal(allNumbers[0], false),
+          bmi: formatVal(allNumbers[1], false),
+          bodyFat: formatVal(allNumbers[2], false),
+          ffw: formatVal(allNumbers[3], false),
+          subcutaneous: formatVal(allNumbers[4], false),
+          visceral: formatVal(allNumbers[5], true),
+          bodyWater: formatVal(allNumbers[6], false),
+          skeletalMuscle: formatVal(allNumbers[7], false),
+          muscleMass: formatVal(allNumbers[8], true),
+          musclePercent: formatVal(allNumbers[9], false),
+          boneMass: formatVal(allNumbers[10], false),
+          bonePercent: formatVal(allNumbers[11], false),
+          protein: formatVal(allNumbers[12], false),
+          bmr: formatVal(allNumbers[13], true),
+          metabolicAge: formatVal(metabolicAgeVal || allNumbers[14], true)
+        };
 
         showStatus("=== EXTRACTED VALUES (" + (isReturningUser ? "Returning User" : "New User") + ") ===\n" + JSON.stringify(extracted, null, 2), "success");
 
