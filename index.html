@@ -269,7 +269,7 @@
     <div class="auth-box">
       <h3>MD Expo 2026 Portal (TEST)</h3>
       <p style="font-size: 14px; color: #666; margin-bottom: 15px;">Please enter the password to access.</p>
-      <form id="auth-form" onsubmit="event.preventDefault(); checkPassword();">
+      <form onsubmit="event.preventDefault(); checkPassword();">
         <input type="password" id="password-input" placeholder="Password" autofocus>
         <button type="submit">Access Portal</button>
       </form>
@@ -375,7 +375,6 @@
       });
     }
 
-    // ORIGINAL SINGLE WEIGHT-INDEX PARSER
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
