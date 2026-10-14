@@ -325,7 +325,7 @@
       }
     }
 
-    // REFINED OCR EXTRACTION & PARSING LOGIC
+    // BASELINE WORKING OCR EXTRACTION
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -368,7 +368,7 @@
           bodyFat: findValueAfterKeyword(['body fat', 'bodyfat', 'fat %']),
           ffw: findValueAfterKeyword(['fat-free', 'fat free', 'fat-free body weight']),
           subcutaneous: findValueAfterKeyword(['subcutaneous']),
-          visceral: findValueAfterKeyword(['visceral fat', 'visceral']), // Fixed #11
+          visceral: findValueAfterKeyword(['visceral fat', 'visceral']),
           bodyWater: findValueAfterKeyword(['body water', 'water']),
           skeletalMuscle: findValueAfterKeyword(['skeletal muscle']),
           muscleMass: findValueAfterKeyword(['muscle mass']),
@@ -377,16 +377,12 @@
           bonePercent: findValueAfterKeyword(['bone percent', 'bone %']),
           protein: findValueAfterKeyword(['protein']),
           bmr: findValueAfterKeyword(['bmr', 'kcal']),
-          metabolicAge: findValueAfterKeyword(['metabolic age', 'metabolic']) // Fixed #20
+          metabolicAge: findValueAfterKeyword(['metabolic age', 'metabolic'])
         };
 
-        // Clean up specific fields where OCR captures trailing unit artifacts
-        if (extracted.boneMass) {
-          // Fix #16: Strip trailing '1' if captured from 'lb' (e.g. 5.41 -> 5.4)
-          let num = parseFloat(extracted.boneMass);
-          if (num > 5 && num < 6 && extracted.boneMass.endsWith('1')) {
-            extracted.boneMass = extracted.boneMass.slice(0, -1);
-          }
+        // Targeted trim for #16 when 'lb' artifact attaches as '1' (e.g., 5.41 -> 5.4)
+        if (extracted.boneMass && extracted.boneMass.length > 3 && extracted.boneMass.endsWith('1')) {
+          extracted.boneMass = extracted.boneMass.slice(0, -1);
         }
 
         formStructure.forEach(metric => {
