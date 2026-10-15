@@ -401,7 +401,7 @@
         let allNumbers = [];
 
         // ==========================================
-        // 1. RETURNING USER PARSER BLOCK
+        // 1. RETURNING USER PARSER BLOCK[cite: 3]
         // ==========================================
         if (isReturningUser) {
           let startIndex = dateIndices[dateIndices.length - 1] + 1;
@@ -429,7 +429,7 @@
           }
         } 
         // ==========================================
-        // 2. NEW USER PARSER BLOCK
+        // 2. NEW USER PARSER BLOCK[cite: 3]
         // ==========================================
         else {
           let weightIndices = [];
@@ -504,7 +504,7 @@
           metabolicAge: formatVal(metabolicAgeVal || allNumbers[14], true)
         };
 
-        showStatus("=== EXTRACTED VALUES (" + (isReturningUser ? "Returning User" : "New User") + ") ===\n" + JSON.stringify(extracted, null, 2), "success");
+        showStatus("=== RAW OCR TEXT ===\n" + cleanedText + "\n\n=== EXTRACTED VALUES (" + (isReturningUser ? "Returning User" : "New User") + ") ===\n" + JSON.stringify(extracted, null, 2), "success");
 
         formStructure.forEach(metric => {
           let nameLower = metric.name.toLowerCase();
@@ -1013,3 +1013,4 @@
   </script>
 </body>
 </html>
+```[cite: 3]
