@@ -356,7 +356,7 @@
       });
     }
 
-    // SEPARATE CASE-BASED OCR PARSER (RETURNING USERS VS. NEW USERS)[cite: 1]
+    // SEPARATE CASE-BASED OCR PARSER (RETURNING USERS VS. NEW USERS)[cite: 2]
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -380,7 +380,7 @@
         let allNumbers = [];
 
         // ==========================================
-        // CASE 1: RETURNING USER PARSING BLOCK[cite: 1]
+        // CASE 1: RETURNING USER PARSING BLOCK[cite: 2]
         // ==========================================
         if (isReturningUser) {
           let startIndex = dateIndices[dateIndices.length - 1] + 1;
@@ -407,7 +407,7 @@
           }
         } 
         // ==========================================
-        // CASE 2: FIRST-TIME (NEW) USER PARSING BLOCK[cite: 1]
+        // CASE 2: FIRST-TIME (NEW) USER PARSING BLOCK[cite: 2]
         // ==========================================
         else {
           let dateIndex = dateIndices.length === 1 ? dateIndices[0] : -1;
@@ -473,8 +473,7 @@
           metabolicAge: formatVal(metabolicAgeVal || allNumbers[14], true)
         };
 
-        const debugOutput = "=== RAW OCR TEXT ===\n" + cleanedText + "\n\n=== EXTRACTED VALUES (" + (isReturningUser ? "Returning User" : "New User") + ") ===\n" + JSON.stringify(extracted, null, 2);
-        showStatus(debugOutput, "success");
+        showStatus("=== EXTRACTED VALUES (" + (isReturningUser ? "Returning User" : "New User") + ") ===\n" + JSON.stringify(extracted, null, 2), "success");
 
         formStructure.forEach(metric => {
           let nameLower = metric.name.toLowerCase();
@@ -509,7 +508,7 @@
       } catch (err) {
         showStatus("OCR Error: " + err.message, "error");
       }
-      event.target.value = "";[cite: 1]
+      event.target.value = ""; 
     }
     function triggerPrint() {
       document.querySelectorAll("#metrics-container input").forEach(input => {
@@ -934,3 +933,4 @@
   </script>
 </body>
 </html>
+```[cite: 2]
