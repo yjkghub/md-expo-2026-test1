@@ -356,7 +356,7 @@
       });
     }
 
-    // OCR PARSER WITH RAW TEXT DISPLAY IN STATUS WINDOW
+    // SEPARATE CASE-BASED OCR PARSER (RETURNING USERS VS. NEW USERS)[cite: 1]
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -473,7 +473,6 @@
           metabolicAge: formatVal(metabolicAgeVal || allNumbers[14], true)
         };
 
-        // Show both original OCR text and extracted values in the debug window
         const debugOutput = "=== RAW OCR TEXT ===\n" + cleanedText + "\n\n=== EXTRACTED VALUES (" + (isReturningUser ? "Returning User" : "New User") + ") ===\n" + JSON.stringify(extracted, null, 2);
         showStatus(debugOutput, "success");
 
