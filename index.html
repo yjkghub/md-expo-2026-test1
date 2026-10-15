@@ -339,7 +339,7 @@
       }
     }
 
-    // CLEAN GRAYSCALE PREPROCESSING: Preserves full color spectrum (cyan, yellow, etc.) for Tesseract's native engine
+    // CLEAN GRAYSCALE PREPROCESSING: Preserves full color spectrum for Tesseract's native engine
     function prepareGrayscaleImage(file) {
       return new Promise((resolve) => {
         const reader = new FileReader();
@@ -358,7 +358,6 @@
             
             for (let i = 0; i < data.length; i += 4) {
               let r = data[i], g = data[i+1], b = data[i+2];
-              // Standard luminance formula retaining all subtle color variations without clipping
               let gray = 0.299 * r + 0.587 * g + 0.114 * b;
               
               data[i] = gray;
@@ -375,7 +374,7 @@
       });
     }
 
-    // UNIFIED PARSER LOGIC WITH STABLE EXTRACTION PATH
+    // UNIFIED PARSER LOGIC WITH WORD-BOUNDED NUMERIC TOKEN MATCHER
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -411,7 +410,8 @@
             if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements") || lower.includes("my account")) {
               continue;
             }
-            let matches = line.match(/(\d+\.?\d*)/g);
+            // Use word-bounded regex to prevent trailing artifacts from appending extra digits
+            let matches = line.match(/\b\d+(?:\.\d+)?\b/g);
             if (matches) {
               matches.forEach(m => {
                 let num = parseFloat(m);
@@ -442,7 +442,7 @@
               continue;
             }
 
-            let matches = line.match(/(\d+\.?\d*)/g);
+            let matches = line.match(/\b\d+(?:\.\d+)?\b/g);
             if (matches) {
               matches.forEach(m => {
                 let num = parseFloat(m);
