@@ -375,7 +375,7 @@
       });
     }
 
-    // OCR PARSER WITH BIFURCATED LOGIC & ARTIFACT BYPASS
+    // OCR PARSER WITH BIFURCATED LOGIC (WHITE ZONE / DATE-ANCHORED FOR NEW USERS)
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -400,18 +400,20 @@
         const isReturningUser = dateIndices.length > 1;
         let allNumbers = [];
 
+        // Find primary date index
+        let dateIndex = -1;
+        for (let i = 0; i < lines.length; i++) {
+          let lower = lines[i].toLowerCase();
+          if (lower.includes("2025") || lower.includes("2026") || lower.includes("august") || lower.includes("14:49")) {
+            dateIndex = i;
+            break;
+          }
+        }
+
         // ==========================================
         // BLOCK 1: OLD / RETURNING USER LOGIC
         // ==========================================
         if (isReturningUser) {
-          let dateIndex = -1;
-          for (let i = 0; i < lines.length; i++) {
-            let lower = lines[i].toLowerCase();
-            if (lower.includes("2025") || lower.includes("2026") || lower.includes("august") || lower.includes("14:49")) {
-              dateIndex = i;
-              break;
-            }
-          }
           let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
           for (let i = startIndex; i < lines.length; i++) {
             let line = lines[i];
@@ -431,14 +433,12 @@
             }
           }
 
-          if (allNumbers.length > 0 && (allNumbers[0] === "4" || allNumbers[0] === "4.0") && allNumbers[1] === "144.6") {
-            allNumbers.shift();
-          } else if (allNumbers.length > 0 && parseFloat(allNumbers[0]) < 50 && !allNumbers[0].includes(".") && allNumbers.length > 1 && parseFloat(allNumbers[1]) > 100) {
+          if (allNumbers.length > 0 && parseFloat(allNumbers[0]) < 50 && !allNumbers[0].includes(".") && allNumbers.length > 1 && parseFloat(allNumbers[1]) > 100) {
             allNumbers.shift();
           }
         } 
         // ==========================================
-        // BLOCK 2: NEW USER LOGIC
+        // BLOCK 2: NEW USER LOGIC (WHITE ZONE BETWEEN DATE & WEIGHT)
         // ==========================================
         else {
           let weightIndices = [];
@@ -448,10 +448,12 @@
               weightIndices.push(i);
             }
           }
-          let targetWeightIndex = weightIndices.length > 0 ? weightIndices[weightIndices.length - 1] : -1;
-          let startIndex = targetWeightIndex >= 0 ? targetWeightIndex : 0;
+          let targetWeightIndex = weightIndices.length > 0 ? weightIndices[weightIndices.length - 1] : lines.length;
 
-          for (let i = startIndex; i < lines.length; i++) {
+          let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
+          let endIndex = targetWeightIndex >= 0 ? targetWeightIndex : lines.length;
+
+          for (let i = startIndex; i < endIndex; i++) {
             let line = lines[i];
             let lower = line.toLowerCase();
             if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements") || lower.includes("my account")) {
@@ -466,13 +468,6 @@
                 }
               });
             }
-          }
-
-          // Bypass/shift leading 4.0 / 144.6 artifact for new users
-          if (allNumbers.length > 0 && (allNumbers[0] === "4" || allNumbers[0] === "4.0") && allNumbers[1] === "144.6") {
-            allNumbers.shift();
-          } else if (allNumbers.length > 0 && parseFloat(allNumbers[0]) < 50 && !allNumbers[0].includes(".") && allNumbers.length > 1 && parseFloat(allNumbers[1]) > 100) {
-            allNumbers.shift();
           }
         }
 
