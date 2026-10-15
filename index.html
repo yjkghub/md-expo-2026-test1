@@ -401,7 +401,7 @@
         let allNumbers = [];
 
         // ==========================================
-        // 1. RETURNING USER PARSER BLOCK[cite: 3]
+        // 1. RETURNING USER PARSER BLOCK
         // ==========================================
         if (isReturningUser) {
           let startIndex = dateIndices[dateIndices.length - 1] + 1;
@@ -429,7 +429,7 @@
           }
         } 
         // ==========================================
-        // 2. NEW USER PARSER BLOCK[cite: 3]
+        // 2. NEW USER PARSER BLOCK
         // ==========================================
         else {
           let dateIndex = dateIndices.length === 1 ? dateIndices[0] : -1;
@@ -850,7 +850,7 @@
     function filterVisitorDropdown() {
       const query = document.getElementById("visitor-search").value.toLowerCase();
       const visitorList = Array.isArray(allVisitors) ? allVisitors : (allVisitors.visitors || []);
-      const filtered = visitorList.filter(v => v.label.toLowerCase().includes(query));
+      const filtered = visitorList.visitorList.filter(v => v.label.toLowerCase().includes(query));
       populateDropdown(filtered);
     }
 
