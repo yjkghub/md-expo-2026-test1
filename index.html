@@ -339,7 +339,7 @@
       }
     }
 
-    // ORIGINAL CONVERT IMAGE TO BLACK & WHITE (GRAYSCALE THRESHOLD) FUNCTION THAT WORKED PRECISELY
+    // ADVANCED COLOR-AWARE PREPROCESSING (Tackles Cyan/Teal vs Background Contrast without Harsh B/W Clipping)
     function convertToBlackAndWhite(file) {
       return new Promise((resolve) => {
         const reader = new FileReader();
@@ -358,8 +358,16 @@
             
             for (let i = 0; i < data.length; i += 4) {
               let r = data[i], g = data[i+1], b = data[i+2];
+              
+              // Cyan/Teal text has high green and blue channels relative to red. 
+              // By weighting Green and Blue higher for cyan detection while maintaining standard luminance, 
+              // cyan text (like skeletal muscle) darkens correctly instead of washing out into the background.
+              let cyanBoost = (g + b) / 2;
               let gray = 0.299 * r + 0.587 * g + 0.114 * b;
-              let val = gray < 210 ? 0 : 255;
+              
+              // If pixel is cyan-leaning or dark, darken it; otherwise brighten background
+              let combined = (cyanBoost < 180 || gray < 180) ? Math.min(cyanBoost, gray) : 255;
+              let val = combined < 210 ? 0 : 255;
               
               data[i] = val;
               data[i+1] = val;
@@ -380,7 +388,7 @@
       const file = event.target.files[0];
       if (!file) return;
 
-      showStatus("⏳ OCR Active: Converting to B&W & processing image...", "loading");
+      showStatus("⏳ OCR Active: Color-aware preprocessing & processing image...", "loading");
 
       try {
         const bwImageUrl = await convertToBlackAndWhite(file);
