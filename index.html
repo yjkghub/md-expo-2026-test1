@@ -339,8 +339,8 @@
       }
     }
 
-    // CLEAN GRAYSCALE PREPROCESSING: Preserves full color spectrum for Tesseract's native engine
-    function prepareGrayscaleImage(file) {
+    // RESTORED ORIGINAL BLACK & WHITE CONVERSION FUNCTION THAT WORKED PRECISELY
+    function convertToBlackAndWhite(file) {
       return new Promise((resolve) => {
         const reader = new FileReader();
         reader.onload = function(e) {
@@ -359,10 +359,11 @@
             for (let i = 0; i < data.length; i += 4) {
               let r = data[i], g = data[i+1], b = data[i+2];
               let gray = 0.299 * r + 0.587 * g + 0.114 * b;
+              let val = gray < 210 ? 0 : 255;
               
-              data[i] = gray;
-              data[i+1] = gray;
-              data[i+2] = gray;
+              data[i] = val;
+              data[i+1] = val;
+              data[i+2] = val;
             }
             
             ctx.putImageData(imgData, 0, 0);
@@ -374,16 +375,16 @@
       });
     }
 
-    // UNIFIED PARSER LOGIC WITH WORD-BOUNDED NUMERIC TOKEN MATCHER
+    // RESTORED ORIGINAL STABLE PARSER LOGIC
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
 
-      showStatus("⏳ OCR Active: Processing image...", "loading");
+      showStatus("⏳ OCR Active: Converting to B&W & processing image...", "loading");
 
       try {
-        const grayImageUrl = await prepareGrayscaleImage(file);
-        const { data: { text } } = await Tesseract.recognize(grayImageUrl, 'eng');
+        const bwImageUrl = await convertToBlackAndWhite(file);
+        const { data: { text } } = await Tesseract.recognize(bwImageUrl, 'eng');
         
         const cleanedText = text.replace(/\b[Gg]\b/g, "9");
         const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
@@ -410,8 +411,7 @@
             if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements") || lower.includes("my account")) {
               continue;
             }
-            // Use word-bounded regex to prevent trailing artifacts from appending extra digits
-            let matches = line.match(/\b\d+(?:\.\d+)?\b/g);
+            let matches = line.match(/(\d+\.?\d*)/g);
             if (matches) {
               matches.forEach(m => {
                 let num = parseFloat(m);
@@ -442,7 +442,7 @@
               continue;
             }
 
-            let matches = line.match(/\b\d+(?:\.\d+)?\b/g);
+            let matches = line.match(/(\d+\.?\d*)/g);
             if (matches) {
               matches.forEach(m => {
                 let num = parseFloat(m);
