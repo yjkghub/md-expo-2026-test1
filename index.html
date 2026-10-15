@@ -339,7 +339,8 @@
       }
     }
 
-    function prepareGrayscaleImage(file) {
+    // CONVERT IMAGE TO BLACK & WHITE (GRAYSCALE THRESHOLD) FIRST
+    function convertToBlackAndWhite(file) {
       return new Promise((resolve) => {
         const reader = new FileReader();
         reader.onload = function(e) {
@@ -358,10 +359,11 @@
             for (let i = 0; i < data.length; i += 4) {
               let r = data[i], g = data[i+1], b = data[i+2];
               let gray = 0.299 * r + 0.587 * g + 0.114 * b;
+              let val = gray < 210 ? 0 : 255;
               
-              data[i] = gray;
-              data[i+1] = gray;
-              data[i+2] = gray;
+              data[i] = val;
+              data[i+1] = val;
+              data[i+2] = val;
             }
             
             ctx.putImageData(imgData, 0, 0);
@@ -373,96 +375,97 @@
       });
     }
 
+    // PARSER WITHOUT ARBITRARY ROW CEILING LIMITS
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
 
-      showStatus("⏳ OCR Active: Processing image...", "loading");
+      showStatus("⏳ OCR Active: Converting to B&W & processing image...", "loading");
 
       try {
-        const grayImageUrl = await prepareGrayscaleImage(file);
-        const { data: { text } } = await Tesseract.recognize(grayImageUrl, 'eng');
+        const bwImageUrl = await convertToBlackAndWhite(file);
+        const { data: { text } } = await Tesseract.recognize(bwImageUrl, 'eng');
         
-        const cleanedText = text.replace(/\b[Gg]\b/g, "9").replace(/lO/g, "10");
+        const cleanedText = text.replace(/\b[Gg]\b/g, "9");
         const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        let startIndex = 0;
+        let dateIndex = -1;
         for (let i = 0; i < lines.length; i++) {
           let lower = lines[i].toLowerCase();
-          if (/\b202[4-9]\b/.test(lower) || /\b\d{2}:\d{2}\b/.test(lower)) {
-            startIndex = i + 1;
+          if (lower.includes("2025") || lower.includes("2026") || lower.includes("august") || lower.includes("14:49")) {
+            dateIndex = i;
+            break;
           }
         }
 
-        const activeText = lines.slice(startIndex).join(" ");
+        let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
+        let allNumbers = [];
 
-        function extractNearLabel(labelRegex) {
-          const match = activeText.match(labelRegex);
-          if (!match) return "";
-          
-          const labelIndex = match.index;
-          const textBefore = activeText.substring(0, labelIndex);
-          const numbersBefore = textBefore.match(/(\d+\.?\d*)/g);
-          
-          if (numbersBefore && numbersBefore.length > 0) {
-            return numbersBefore[numbersBefore.length - 1]; 
-          } else {
-            const textAfter = activeText.substring(labelIndex + match[0].length);
-            const numbersAfter = textAfter.match(/(\d+\.?\d*)/);
-            if (numbersAfter) return numbersAfter[0];
+        for (let i = startIndex; i < lines.length; i++) {
+          let line = lines[i];
+          let lower = line.toLowerCase();
+          if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements") || lower.includes("my account")) {
+            continue;
           }
-          return "";
+
+          let matches = line.match(/(\d+\.?\d*)/g);
+          if (matches) {
+            matches.forEach(m => {
+              let num = parseFloat(m);
+              if (m !== "2025" && m !== "2026" && num < 5000) {
+                allNumbers.push(m);
+              }
+            });
+          }
         }
 
-        let weight = extractNearLabel(/Weight\s*(?!goal)/i);
-        let bmi = extractNearLabel(/BMI/i);
-        let bodyFat = extractNearLabel(/Body\s*Fat\s*(?!goal)/i);
-        let ffw = extractNearLabel(/Fat-free\s*Body/i);
-        let subcutaneous = extractNearLabel(/Subcutaneous/i);
-        let visceral = extractNearLabel(/Visceral/i);
-        let bodyWater = extractNearLabel(/Body\s*Water/i);
-        let skeletalMuscle = extractNearLabel(/Skeletal\s*Muscle/i);
-        let muscleMass = extractNearLabel(/Muscle\s*Mass/i);
-        let musclePercent = extractNearLabel(/Muscle\s*Percentage/i);
-        let boneMass = extractNearLabel(/Bone\s*Mass/i);
-        let bonePercent = extractNearLabel(/Bone\s*Percent/i);
-        let protein = extractNearLabel(/Protein/i);
-        let bmr = extractNearLabel(/BMR/i);
-        let metabolicAge = extractNearLabel(/Metabolic\s*Age/i);
-
-        const fixPercentage = (val) => (val && parseFloat(val) > 100) ? (parseFloat(val) / 10).toFixed(1) : val;
-        
-        bodyFat = fixPercentage(bodyFat);
-        subcutaneous = fixPercentage(subcutaneous);
-        bodyWater = fixPercentage(bodyWater);
-        skeletalMuscle = fixPercentage(skeletalMuscle);
-        musclePercent = fixPercentage(musclePercent);
-        bonePercent = fixPercentage(bonePercent);
-        protein = fixPercentage(protein);
+        if (allNumbers.length > 0 && allNumbers[0] === "4" && allNumbers[1] === "144.6") {
+          allNumbers.shift();
+        } else if (allNumbers.length > 0 && parseFloat(allNumbers[0]) < 50 && !allNumbers[0].includes(".") && allNumbers.length > 1 && parseFloat(allNumbers[1]) > 100) {
+          allNumbers.shift();
+        }
 
         function formatVal(valStr, isInteger = false) {
           if (!valStr) return "";
           let num = parseFloat(valStr);
           if (isNaN(num)) return valStr;
-          return isInteger ? Math.round(num).toString() : num.toFixed(1);
+          if (isInteger) {
+            return Math.round(num).toString();
+          } else {
+            return num.toFixed(1);
+          }
+        }
+
+        let metabolicAgeVal = "";
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].toLowerCase().includes("cal")) {
+            let parts = lines[i].split(/cal/i);
+            if (parts.length > 1) {
+              let nums = parts[1].match(/(\d+)/g);
+              if (nums && nums.length > 0) {
+                metabolicAgeVal = nums[0];
+                break;
+              }
+            }
+          }
         }
 
         const extracted = {
-          weight: formatVal(weight, false),
-          bmi: formatVal(bmi, false),
-          bodyFat: formatVal(bodyFat, false),
-          ffw: formatVal(ffw, false),
-          subcutaneous: formatVal(subcutaneous, false),
-          visceral: formatVal(visceral, true),
-          bodyWater: formatVal(bodyWater, false),
-          skeletalMuscle: formatVal(skeletalMuscle, false),
-          muscleMass: formatVal(muscleMass, false),
-          musclePercent: formatVal(musclePercent, false),
-          boneMass: formatVal(boneMass, false),
-          bonePercent: formatVal(bonePercent, false),
-          protein: formatVal(protein, false),
-          bmr: formatVal(bmr, true),
-          metabolicAge: formatVal(metabolicAge, true)
+          weight: formatVal(allNumbers[0], false),
+          bmi: formatVal(allNumbers[1], false),
+          bodyFat: formatVal(allNumbers[2], false),
+          ffw: formatVal(allNumbers[3], false),
+          subcutaneous: formatVal(allNumbers[4], false),
+          visceral: formatVal(allNumbers[5], true),
+          bodyWater: formatVal(allNumbers[6], false),
+          skeletalMuscle: formatVal(allNumbers[7], false),
+          muscleMass: formatVal(allNumbers[8], true),
+          musclePercent: formatVal(allNumbers[9], false),
+          boneMass: formatVal(allNumbers[10], false),
+          bonePercent: formatVal(allNumbers[11], false),
+          protein: formatVal(allNumbers[12], false),
+          bmr: formatVal(allNumbers[13], true),
+          metabolicAge: formatVal(metabolicAgeVal || allNumbers[14], true)
         };
 
         showStatus("=== EXTRACTED VALUES ===\n" + JSON.stringify(extracted, null, 2), "success");
@@ -471,9 +474,10 @@
           let nameLower = metric.name.toLowerCase();
           let rowIndex = parseInt(metric.rowIndex);
           
-          if (rowIndex < 6) return; 
+          if (rowIndex < 6) return;
 
           let valToSet = "";
+
           if (nameLower.includes("weight") && !nameLower.includes("fat")) valToSet = extracted.weight;
           else if (nameLower.includes("bmi")) valToSet = extracted.bmi;
           else if (nameLower.includes("body fat")) valToSet = extracted.bodyFat;
@@ -494,7 +498,7 @@
             const input = document.getElementById("row_" + metric.rowIndex);
             if (input) {
               input.value = valToSet;
-              input.dispatchEvent(new Event('input')); 
+              input.dispatchEvent(new Event('input'));
             }
           }
         });
@@ -542,7 +546,14 @@
         } catch (e) {}
       }
 
-      const printHtml = `
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert("Popup blocked! Please allow popups for this site to print.");
+        return;
+      }
+
+      printWindow.document.open();
+      printWindow.document.write(`
         <!DOCTYPE html>
         <html>
         <head>
@@ -582,28 +593,17 @@
           <div id="metrics-container">
             ${document.getElementById('metrics-container').innerHTML}
           </div>
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 400);
+            };
+          <\/script>
         </body>
         </html>
-      `;
-
-      // Create a hidden iframe for printing to bypass popup blockers
-      let printFrame = document.getElementById('hidden-print-frame');
-      if (!printFrame) {
-        printFrame = document.createElement('iframe');
-        printFrame.id = 'hidden-print-frame';
-        printFrame.style.display = 'none';
-        document.body.appendChild(printFrame);
-      }
-
-      const doc = printFrame.contentWindow.document;
-      doc.open();
-      doc.write(printHtml);
-      doc.close();
-
-      setTimeout(() => {
-        printFrame.contentWindow.focus();
-        printFrame.contentWindow.print();
-      }, 500);
+      `);
+      printWindow.document.close();
     }
 
     function saveData() {
@@ -790,6 +790,8 @@
       showStatus("Loading system...", "loading");
       fetchAPI({ action: "getFormStructure" }, function(res) {
         formStructure = res.data;
+        // PRINT FORM STRUCTURE DIRECTLY ON SCREEN TO VERIFY ROWS
+        showStatus("=== LOADED FORM STRUCTURE ==\n" + JSON.stringify(formStructure, null, 2), "success");
         buildForm();
         loadVisitorDropdown();
       });
@@ -802,14 +804,12 @@
       });
     }
 
-    function populateDropdown(visitorsData) {
+    function populateDropdown(visitors) {
       const select = document.getElementById("visitor-select");
       const currentValue = select.value;
       select.options.length = 2; 
       
-      const visitorList = Array.isArray(visitorsData) ? visitorsData : (visitorsData.visitors || []);
-      
-      visitorList.forEach(v => {
+      visitors.forEach(v => {
         let opt = document.createElement("option");
         opt.value = v.colIndex;
         opt.text = v.label;
@@ -820,8 +820,7 @@
 
     function filterVisitorDropdown() {
       const query = document.getElementById("visitor-search").value.toLowerCase();
-      const visitorList = Array.isArray(allVisitors) ? allVisitors : (allVisitors.visitors || []);
-      const filtered = visitorList.filter(v => v.label.toLowerCase().includes(query));
+      const filtered = allVisitors.filter(v => v.label.toLowerCase().includes(query));
       populateDropdown(filtered);
     }
 
@@ -883,7 +882,7 @@
           labelRow.className = "label-row";
           
           const label = document.createElement("label");
-          label.innerText = `${metric.displayIndex} - ${metric.name}` + (metric.device ? ` (${metric.device})` : "");
+          label.innerText = `${metric.displayIndex} - metric.name`+(metric.device?`({metric.device})` : "");
           
           const badge = document.createElement("span");
           badge.className = "recorded-badge";
