@@ -339,8 +339,8 @@
       }
     }
 
-    // RESTORED ORIGINAL BLACK & WHITE CONVERSION FUNCTION THAT WORKED PRECISELY
-    function convertToBlackAndWhite(file) {
+    // CLEAN GRAYSCALE PREPROCESSING: Preserves full color spectrum (cyan, yellow, etc.) for Tesseract's native engine
+    function prepareGrayscaleImage(file) {
       return new Promise((resolve) => {
         const reader = new FileReader();
         reader.onload = function(e) {
@@ -358,12 +358,12 @@
             
             for (let i = 0; i < data.length; i += 4) {
               let r = data[i], g = data[i+1], b = data[i+2];
+              // Standard luminance formula retaining all subtle color variations without clipping
               let gray = 0.299 * r + 0.587 * g + 0.114 * b;
-              let val = gray < 210 ? 0 : 255;
               
-              data[i] = val;
-              data[i+1] = val;
-              data[i+2] = val;
+              data[i] = gray;
+              data[i+1] = gray;
+              data[i+2] = gray;
             }
             
             ctx.putImageData(imgData, 0, 0);
@@ -375,16 +375,16 @@
       });
     }
 
-    // RESTORED ORIGINAL STABLE PARSER LOGIC
+    // UNIFIED PARSER LOGIC WITH STABLE EXTRACTION PATH
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
 
-      showStatus("⏳ OCR Active: Converting to B&W & processing image...", "loading");
+      showStatus("⏳ OCR Active: Processing image...", "loading");
 
       try {
-        const bwImageUrl = await convertToBlackAndWhite(file);
-        const { data: { text } } = await Tesseract.recognize(bwImageUrl, 'eng');
+        const grayImageUrl = await prepareGrayscaleImage(file);
+        const { data: { text } } = await Tesseract.recognize(grayImageUrl, 'eng');
         
         const cleanedText = text.replace(/\b[Gg]\b/g, "9");
         const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
