@@ -432,15 +432,8 @@
         // 2. NEW USER PARSER BLOCK[cite: 3]
         // ==========================================
         else {
-          let weightIndices = [];
-          for (let i = 0; i < lines.length; i++) {
-            let lower = lines[i].toLowerCase();
-            if (lower.includes("weight") && !lower.includes("ideal") && !lower.includes("control")) {
-              weightIndices.push(i);
-            }
-          }
-          let targetWeightIndex = weightIndices.length > 0 ? weightIndices[weightIndices.length - 1] : -1;
-          let startIndex = targetWeightIndex >= 0 ? targetWeightIndex : 0;
+          let dateIndex = dateIndices.length === 1 ? dateIndices[0] : -1;
+          let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
 
           for (let i = startIndex; i < lines.length; i++) {
             let line = lines[i];
@@ -1013,4 +1006,3 @@
   </script>
 </body>
 </html>
-```[cite: 3]
