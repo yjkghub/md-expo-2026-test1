@@ -356,7 +356,7 @@
       });
     }
 
-    // SEPARATE CASE-BASED OCR PARSER (RETURNING USERS VS. NEW USERS)
+    // OCR PARSER WITH RAW TEXT DISPLAY IN STATUS WINDOW
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -378,15 +378,6 @@
 
         const isReturningUser = dateIndices.length > 1;
         let allNumbers = [];
-
-        let dateIndex = -1;
-        for (let i = 0; i < lines.length; i++) {
-          let lower = lines[i].toLowerCase();
-          if (lower.includes("2025") || lower.includes("2026") || lower.includes("august") || lower.includes("14:49")) {
-            dateIndex = i;
-            break;
-          }
-        }
 
         // ==========================================
         // CASE 1: RETURNING USER PARSING BLOCK[cite: 1]
@@ -419,18 +410,9 @@
         // CASE 2: FIRST-TIME (NEW) USER PARSING BLOCK[cite: 1]
         // ==========================================
         else {
-          let weightIndices = [];
-          for (let i = 0; i < lines.length; i++) {
-            let lower = lines[i].toLowerCase();
-            if (lower.includes("weight") && !lower.includes("ideal") && !lower.includes("control")) {
-              weightIndices.push(i);
-            }
-          }
-          let targetWeightIndex = weightIndices.length > 0 ? weightIndices[weightIndices.length - 1] : lines.length;
+          let dateIndex = dateIndices.length === 1 ? dateIndices[0] : -1;
           let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
-          let endIndex = targetWeightIndex >= 0 ? targetWeightIndex : lines.length;
-
-          for (let i = startIndex; i < endIndex; i++) {
+          for (let i = startIndex; i < lines.length; i++) {
             let line = lines[i];
             let lower = line.toLowerCase();
             if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements") || lower.includes("my account")) {
@@ -491,7 +473,9 @@
           metabolicAge: formatVal(metabolicAgeVal || allNumbers[14], true)
         };
 
-        showStatus("=== EXTRACTED VALUES (" + (isReturningUser ? "Returning User" : "New User") + ") ===\n" + JSON.stringify(extracted, null, 2), "success");
+        // Show both original OCR text and extracted values in the debug window
+        const debugOutput = "=== RAW OCR TEXT ===\n" + cleanedText + "\n\n=== EXTRACTED VALUES (" + (isReturningUser ? "Returning User" : "New User") + ") ===\n" + JSON.stringify(extracted, null, 2);
+        showStatus(debugOutput, "success");
 
         formStructure.forEach(metric => {
           let nameLower = metric.name.toLowerCase();
