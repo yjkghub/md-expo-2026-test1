@@ -375,7 +375,7 @@
       });
     }
 
-    // OCR PARSER WITH SEPARATE BLOCKS FOR OLD AND NEW CASES & UPLOADER RESET
+    // OCR PARSER WITH BIFURCATED LOGIC & ARTIFACT BYPASS
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -431,7 +431,7 @@
             }
           }
 
-          if (allNumbers.length > 0 && allNumbers[0] === "4" && allNumbers[1] === "144.6") {
+          if (allNumbers.length > 0 && (allNumbers[0] === "4" || allNumbers[0] === "4.0") && allNumbers[1] === "144.6") {
             allNumbers.shift();
           } else if (allNumbers.length > 0 && parseFloat(allNumbers[0]) < 50 && !allNumbers[0].includes(".") && allNumbers.length > 1 && parseFloat(allNumbers[1]) > 100) {
             allNumbers.shift();
@@ -466,6 +466,13 @@
                 }
               });
             }
+          }
+
+          // Bypass/shift leading 4.0 / 144.6 artifact for new users
+          if (allNumbers.length > 0 && (allNumbers[0] === "4" || allNumbers[0] === "4.0") && allNumbers[1] === "144.6") {
+            allNumbers.shift();
+          } else if (allNumbers.length > 0 && parseFloat(allNumbers[0]) < 50 && !allNumbers[0].includes(".") && allNumbers.length > 1 && parseFloat(allNumbers[1]) > 100) {
+            allNumbers.shift();
           }
         }
 
@@ -551,7 +558,6 @@
         showStatus("OCR Error: " + err.message, "error");
       }
 
-      // Explicitly reset file input value so selecting the same file triggers change event again
       event.target.value = ""; 
     }
 
