@@ -339,7 +339,7 @@
       }
     }
 
-    // CLEAN GRAYSCALE PREPROCESSING: Preserves full color spectrum (cyan, yellow, etc.) for Tesseract's native engine[cite: 1]
+    // CLEAN GRAYSCALE PREPROCESSING: Preserves full color spectrum (cyan, yellow, etc.) for Tesseract's native engine
     function prepareGrayscaleImage(file) {
       return new Promise((resolve) => {
         const reader = new FileReader();
@@ -358,7 +358,7 @@
             
             for (let i = 0; i < data.length; i += 4) {
               let r = data[i], g = data[i+1], b = data[i+2];
-              // Standard luminance formula retaining all subtle color variations without clipping[cite: 1]
+              // Standard luminance formula retaining all subtle color variations without clipping
               let gray = 0.299 * r + 0.587 * g + 0.114 * b;
               
               data[i] = gray;
@@ -375,7 +375,7 @@
       });
     }
 
-    // UNIFIED PARSER LOGIC WITH STABLE EXTRACTION PATH[cite: 1]
+    // UNIFIED PARSER LOGIC WITH STABLE EXTRACTION PATH
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -401,7 +401,7 @@
         let allNumbers = [];
 
         // ==========================================
-        // 1. RETURNING USER PARSER BLOCK[cite: 1]
+        // 1. RETURNING USER PARSER BLOCK
         // ==========================================
         if (isReturningUser) {
           let startIndex = dateIndices[dateIndices.length - 1] + 1;
@@ -429,7 +429,7 @@
           }
         } 
         // ==========================================
-        // 2. NEW USER PARSER BLOCK[cite: 1]
+        // 2. NEW USER PARSER BLOCK
         // ==========================================
         else {
           let dateIndex = dateIndices.length === 1 ? dateIndices[0] : -1;
