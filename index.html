@@ -184,62 +184,38 @@
         const isReturningUser = dateIndices.length > 1;
         let allNumbers = [];
 
-        // ==========================================
-        // 1. RETURNING USER PARSER BLOCK
-        // ==========================================
-        if (isReturningUser) {
-          let startIndex = dateIndices[dateIndices.length - 1] + 1;
-          for (let i = startIndex; i < lines.length; i++) {
-            let line = lines[i];
-            let lower = line.toLowerCase();
-            if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements") || lower.includes("my account")) {
-              continue;
-            }
-            let matches = line.match(/(\d+\.?\d*)/g);
-            if (matches) {
-              matches.forEach(m => {
-                let num = parseFloat(m);
-                if (m !== "2025" && m !== "2026" && num < 5000) {
-                  allNumbers.push(m);
-                }
-              });
-            }
+        // Parse lines for numbers
+        let dateIndex = dateIndices.length === 1 ? dateIndices[0] : (isReturningUser ? dateIndices[dateIndices.length - 1] : -1);
+        let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
+
+        for (let i = startIndex; i < lines.length; i++) {
+          let line = lines[i];
+          let lower = line.toLowerCase();
+          if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements") || lower.includes("my account")) {
+            continue;
           }
-        } 
-        // ==========================================
-        // 2. NEW USER PARSER BLOCK
-        // ==========================================
-        else {
-          let dateIndex = dateIndices.length === 1 ? dateIndices[0] : -1;
-          let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
-
-          for (let i = startIndex; i < lines.length; i++) {
-            let line = lines[i];
-            let lower = line.toLowerCase();
-            if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements") || lower.includes("my account")) {
-              continue;
-            }
-
-            let matches = line.match(/(\d+\.?\d*)/g);
-            if (matches) {
-              matches.forEach(m => {
-                let num = parseFloat(m);
-                if (m !== "2025" && m !== "2026" && num < 5000) {
-                  allNumbers.push(m);
-                }
-              });
-            }
+          let matches = line.match(/(\d+\.?\d*)/g);
+          if (matches) {
+            matches.forEach(m => {
+              let num = parseFloat(m);
+              if (m !== "2025" && m !== "2026" && num < 5000) {
+                allNumbers.push(m);
+              }
+            });
           }
         }
 
-        // --- DYNAMIC ANCHOR FIX ---
-        // Find the first large number (which will be Weight) and slice off OCR junk before it
-        let weightAnchorIndex = allNumbers.findIndex(n => parseFloat(n) > 70);
-        if (weightAnchorIndex > 0) {
-          allNumbers = allNumbers.slice(weightAnchorIndex);
+        // ==========================================
+        // BULLETPROOF ANCHOR: Drop all leading small numbers (dates, times, goal changes) 
+        // until we hit the actual Weight (assumed > 65 lbs)
+        // ==========================================
+        while (allNumbers.length > 0 && parseFloat(allNumbers[0]) < 65) {
+          allNumbers.shift();
         }
 
-        // --- DECIMAL FIX HELPER ---
+        // ==========================================
+        // DECIMAL FIX HELPER: If OCR reads a percentage without a decimal (e.g. 459 instead of 45.9)
+        // ==========================================
         const fixDecimal = (val) => (val && parseFloat(val) > 100) ? (parseFloat(val) / 10).toString() : val;
 
         function formatVal(valStr, isInteger = false) {
@@ -285,7 +261,8 @@
           metabolicAge: formatVal(metabolicAgeVal || allNumbers[14], true)
         };
 
-        showStatus("=== RAW OCR TEXT ===\n" + cleanedText + "\n\n=== EXTRACTED VALUES (" + (isReturningUser ? "Returning User" : "New User") + ") ===\n" + JSON.stringify(extracted, null, 2), "success");
+        const userStatus = isReturningUser ? "(Old User)" : "(New User)";
+        showStatus("=== RAW OCR TEXT ===\n" + cleanedText + "\n\n=== EXTRACTED VALUES " + userStatus + " ===\n" + JSON.stringify(extracted, null, 2), "success");
 
         formStructure.forEach(metric => {
           let nameLower = metric.name.toLowerCase();
