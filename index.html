@@ -142,13 +142,11 @@
       display: flex;
       gap: 12px;
       margin-top: 10px;
-      flex-wrap: wrap;
     }
     
     /* COLORED BUTTONS */
     .btn-action {
       flex: 1;
-      min-width: 130px;
       padding: 14px 15px;
       color: white;
       border: none;
@@ -167,9 +165,6 @@
     
     .btn-print { background-color: #27ae60; }
     .btn-print:hover { background-color: #1e8449; }
-
-    .btn-dir { background-color: #16a085; }
-    .btn-dir:hover { background-color: #117a65; }
 
     .btn-ocr { background-color: #d35400; margin-bottom: 12px; width: 100%; display: block; text-align: center; }
     .btn-ocr:hover { background-color: #ba4a00; }
@@ -311,7 +306,6 @@
     <div class="button-container">
       <button class="btn-action btn-save" id="save-btn" onclick="saveData()">Save / Update Measurements</button>
       <button class="btn-action btn-drive" id="drive-btn" onclick="saveToDrivePrompt()">📁 Save Result (Google)</button>
-      <button class="btn-action btn-dir" id="dir-btn" onclick="openLastDirectory()">📂 Open Last Directory</button>
       <button class="btn-action btn-print" onclick="triggerPrint()">🖨️ Print Result</button>
     </div>
 
@@ -326,14 +320,12 @@
     const API_URL = "https://script.google.com/macros/s/AKfycby-oTR693t5Y36logsSb0Yau3nPmPWmWO9KyHyFkZCRVANESwVKi8A5XuhrJ5HctdOS/exec"; 
     let formStructure = [];
     let allVisitors = [];
-    let lastDirectoryHandle = null;
 
     window.addEventListener('DOMContentLoaded', () => {
       if (sessionStorage.getItem("expo_authenticated") === "true") {
         document.getElementById("auth-overlay").style.display = "none";
         initApp();
       }
-      initDirectoryStorage();
     });
 
     function checkPassword() {
@@ -347,68 +339,8 @@
       }
     }
 
-    // INDEXEDDB HELPER FOR DIRECTORY HANDLE PERSISTENCE
-    function initDirectoryStorage() {
-      const request = indexedDB.open("ExpoDirectoryDB", 1);
-      request.onupgradeneeded = (e) => {
-        let db = e.target.result;
-        if (!db.objectStoreNames.contains("handles")) {
-          db.createObjectStore("handles");
-        }
-      };
-      request.onsuccess = (e) => {
-        let db = e.target.result;
-        let tx = db.transaction("handles", "readonly");
-        let store = tx.objectStore("handles");
-        let getReq = store.get("lastDir");
-        getReq.onsuccess = () => {
-          if (getReq.result) {
-            lastDirectoryHandle = getReq.result;
-          }
-        };
-      };
-    }
-
-    function saveDirectoryHandleToDB(handle) {
-      lastDirectoryHandle = handle;
-      const request = indexedDB.open("ExpoDirectoryDB", 1);
-      request.onsuccess = (e) => {
-        let db = e.target.result;
-        let tx = db.transaction("handles", "readwrite");
-        let store = tx.objectStore("handles");
-        store.put(handle, "lastDir");
-      };
-    }
-
-    async function openLastDirectory() {
-      if (!window.showDirectoryPicker) {
-        alert("File System Access API is not supported in this browser.");
-        return;
-      }
-      try {
-        if (lastDirectoryHandle) {
-          const opts = { mode: 'readwrite' };
-          if ((await lastDirectoryHandle.queryPermission(opts)) !== 'granted') {
-            if ((await lastDirectoryHandle.requestPermission(opts)) !== 'granted') {
-              lastDirectoryHandle = await window.showDirectoryPicker();
-              saveDirectoryHandleToDB(lastDirectoryHandle);
-            }
-          }
-          showStatus("📂 Successfully opened last directory: " + lastDirectoryHandle.name, "success");
-        } else {
-          lastDirectoryHandle = await window.showDirectoryPicker();
-          saveDirectoryHandleToDB(lastDirectoryHandle);
-          showStatus("📂 Successfully opened directory: " + lastDirectoryHandle.name, "success");
-        }
-      } catch (err) {
-        if (err.name !== 'AbortError') {
-          showStatus("Directory error: " + err.message, "error");
-        }
-      }
-    }
-
-    // CLEAN GRAYSCALE PREPROCESSING
-    function prepareGrayscaleImage(file) {
+    // CONVERT IMAGE TO BLACK & WHITE (GRAYSCALE THRESHOLD) FIRST
+    function convertToBlackAndWhite(file) {
       return new Promise((resolve) => {
         const reader = new FileReader();
         reader.onload = function(e) {
@@ -427,10 +359,11 @@
             for (let i = 0; i < data.length; i += 4) {
               let r = data[i], g = data[i+1], b = data[i+2];
               let gray = 0.299 * r + 0.587 * g + 0.114 * b;
+              let val = gray < 210 ? 0 : 255;
               
-              data[i] = gray;
-              data[i+1] = gray;
-              data[i+2] = gray;
+              data[i] = val;
+              data[i+1] = val;
+              data[i+2] = val;
             }
             
             ctx.putImageData(imgData, 0, 0);
@@ -442,87 +375,54 @@
       });
     }
 
-    // RESTORED STABLE PARSER LOGIC WITH SEPARATE USER CASE BLOCKS[cite: 2]
+    // PARSER WITHOUT ARBITRARY ROW CEILING LIMITS
     async function processInBodyImage(event) {
       const file = event.target.files[0];
       if (!file) return;
 
-      showStatus("⏳ OCR Active: Processing image...", "loading");
+      showStatus("⏳ OCR Active: Converting to B&W & processing image...", "loading");
 
       try {
-        const grayImageUrl = await prepareGrayscaleImage(file);
-        const { data: { text } } = await Tesseract.recognize(grayImageUrl, 'eng');
+        const bwImageUrl = await convertToBlackAndWhite(file);
+        const { data: { text } } = await Tesseract.recognize(bwImageUrl, 'eng');
         
         const cleanedText = text.replace(/\b[Gg]\b/g, "9");
         const lines = cleanedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        let dateIndices = [];
+        let dateIndex = -1;
         for (let i = 0; i < lines.length; i++) {
           let lower = lines[i].toLowerCase();
-          if (lower.includes("2025") || lower.includes("2026") || lower.includes("august") || lower.includes("june") || lower.includes("july") || lower.includes("14:49") || lower.includes("15:34")) {
-            dateIndices.push(i);
+          if (lower.includes("2025") || lower.includes("2026") || lower.includes("august") || lower.includes("14:49")) {
+            dateIndex = i;
+            break;
           }
         }
 
-        const isReturningUser = dateIndices.length > 1;
+        let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
         let allNumbers = [];
 
-        // ==========================================
-        // 1. RETURNING USER PARSER BLOCK[cite: 2]
-        // ==========================================
-        if (isReturningUser) {
-          let startIndex = dateIndices[dateIndices.length - 1] + 1;
-          for (let i = startIndex; i < lines.length; i++) {
-            let line = lines[i];
-            let lower = line.toLowerCase();
-            if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements") || lower.includes("my account")) {
-              continue;
-            }
-            let matches = line.match(/(\d+\.?\d*)/g);
-            if (matches) {
-              matches.forEach(m => {
-                let num = parseFloat(m);
-                if (m !== "2025" && m !== "2026" && num < 5000) {
-                  allNumbers.push(m);
-                }
-              });
-            }
+        for (let i = startIndex; i < lines.length; i++) {
+          let line = lines[i];
+          let lower = line.toLowerCase();
+          if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements") || lower.includes("my account")) {
+            continue;
           }
 
-          if (allNumbers.length > 0 && allNumbers[0] === "4" && allNumbers[1] === "181.4") {
-            allNumbers.shift();
-          } else if (allNumbers.length > 0 && parseFloat(allNumbers[0]) < 50 && !allNumbers[0].includes(".") && allNumbers.length > 1 && parseFloat(allNumbers[1]) > 100) {
-            allNumbers.shift();
+          let matches = line.match(/(\d+\.?\d*)/g);
+          if (matches) {
+            matches.forEach(m => {
+              let num = parseFloat(m);
+              if (m !== "2025" && m !== "2026" && num < 5000) {
+                allNumbers.push(m);
+              }
+            });
           }
-        } 
-        // ==========================================
-        // 2. NEW USER PARSER BLOCK[cite: 2]
-        // ==========================================
-        else {
-          let dateIndex = dateIndices.length === 1 ? dateIndices[0] : -1;
-          let startIndex = dateIndex >= 0 ? dateIndex + 1 : 0;
+        }
 
-          for (let i = startIndex; i < lines.length; i++) {
-            let line = lines[i];
-            let lower = line.toLowerCase();
-            if (lower.includes("all data collected") || lower.includes("medical treatment") || lower.includes("discover") || lower.includes("trends") || lower.includes("measurements") || lower.includes("my account")) {
-              continue;
-            }
-
-            let matches = line.match(/(\d+\.?\d*)/g);
-            if (matches) {
-              matches.forEach(m => {
-                let num = parseFloat(m);
-                if (m !== "2025" && m !== "2026" && num < 5000) {
-                  allNumbers.push(m);
-                }
-              });
-            }
-          }
-
-          if (allNumbers.length > 0 && allNumbers[0] === "4") {
-            allNumbers.shift();
-          }
+        if (allNumbers.length > 0 && allNumbers[0] === "4" && allNumbers[1] === "144.6") {
+          allNumbers.shift();
+        } else if (allNumbers.length > 0 && parseFloat(allNumbers[0]) < 50 && !allNumbers[0].includes(".") && allNumbers.length > 1 && parseFloat(allNumbers[1]) > 100) {
+          allNumbers.shift();
         }
 
         function formatVal(valStr, isInteger = false) {
@@ -559,7 +459,7 @@
           visceral: formatVal(allNumbers[5], true),
           bodyWater: formatVal(allNumbers[6], false),
           skeletalMuscle: formatVal(allNumbers[7], false),
-          muscleMass: formatVal(allNumbers[8], false),
+          muscleMass: formatVal(allNumbers[8], true),
           musclePercent: formatVal(allNumbers[9], false),
           boneMass: formatVal(allNumbers[10], false),
           bonePercent: formatVal(allNumbers[11], false),
@@ -568,7 +468,7 @@
           metabolicAge: formatVal(metabolicAgeVal || allNumbers[14], true)
         };
 
-        showStatus("=== RAW OCR TEXT ===\n" + cleanedText + "\n\n=== EXTRACTED VALUES (" + (isReturningUser ? "Returning User" : "New User") + ") ===\n" + JSON.stringify(extracted, null, 2), "success");
+        showStatus("=== EXTRACTED VALUES ===\n" + JSON.stringify(extracted, null, 2), "success");
 
         formStructure.forEach(metric => {
           let nameLower = metric.name.toLowerCase();
@@ -890,6 +790,7 @@
       showStatus("Loading system...", "loading");
       fetchAPI({ action: "getFormStructure" }, function(res) {
         formStructure = res.data;
+        // PRINT FORM STRUCTURE DIRECTLY ON SCREEN TO VERIFY ROWS
         showStatus("=== LOADED FORM STRUCTURE ==\n" + JSON.stringify(formStructure, null, 2), "success");
         buildForm();
         loadVisitorDropdown();
@@ -981,7 +882,7 @@
           labelRow.className = "label-row";
           
           const label = document.createElement("label");
-          label.innerText = `${metric.displayIndex} - ${metric.name}` + (metric.device ? ` (${metric.device})` : "");
+          label.innerText = `${metric.displayIndex} - metric.name`+(metric.device?`({metric.device})` : "");
           
           const badge = document.createElement("span");
           badge.className = "recorded-badge";
@@ -1075,3 +976,5 @@
   </script>
 </body>
 </html>
+
+
